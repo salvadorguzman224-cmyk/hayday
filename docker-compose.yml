@@ -1,0 +1,76 @@
+version: "3.9"
+
+services:
+  db:
+    image: timescale/timescaledb:latest-pg15
+    environment:
+      POSTGRES_USER: hayday
+      POSTGRES_PASSWORD: hayday
+      POSTGRES_DB: hayday
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hayday"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql+asyncpg://hayday:hayday@db:5432/hayday
+      REDIS_URL: redis://redis:6379
+      USDA_AMS_API_KEY: ${USDA_AMS_API_KEY:-}
+      USDA_NASS_API_KEY: ${USDA_NASS_API_KEY:-}
+      NOAA_API_KEY: ${NOAA_API_KEY:-}
+      EIA_API_KEY: ${EIA_API_KEY:-}
+      SECRET_KEY: ${SECRET_KEY:-changeme-in-production}
+      DEBUG: ${DEBUG:-true}
+      SENDGRID_API_KEY: ${SENDGRID_API_KEY:-}
+      ALERT_FROM_EMAIL: ${ALERT_FROM_EMAIL:-alerts@hayprice.io}
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+      - model_artifacts:/app/ml_models
+    command: >
+      sh -c "alembic upgrade head &&
+             python scripts/seed_data.py &&
+             python scripts/train_model.py &&
+             uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8000
+    depends_on:
+      - backend
+    volumes:
+      - ./frontend/src:/app/src
+
+volumes:
+  pgdata:
+  model_artifacts:
