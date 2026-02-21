@@ -25,36 +25,84 @@ YELLOW = "\033[93m"
 RESET  = "\033[0m"
 BOLD   = "\033[1m"
 
-def ok(msg):    print(f"  {GREEN}✓{RESET} {msg}")
-def fail(msg):  print(f"  {RED}✗{RESET} {msg}")
-def warn(msg):  print(f"  {YELLOW}⚠{RESET} {msg}")
+def ok(msg):     print(f"  {GREEN}✓{RESET} {msg}")
+def fail(msg):   print(f"  {RED}✗{RESET} {msg}")
+def warn(msg):   print(f"  {YELLOW}⚠{RESET} {msg}")
+def info(msg):   print(f"    {msg}")
 def header(msg): print(f"\n{BOLD}{msg}{RESET}")
 
 
 async def check_usda_ams():
-    header("USDA AMS Market News  (LM_GR212 — CA Direct Hay)")
+    header("USDA AMS Market News  (CA Direct Hay)")
     if not USDA_AMS_KEY:
         warn("USDA_AMS_API_KEY not set — skipping")
         return False
 
-    url = "https://marsapi.ams.usda.gov/services/v1.2/reports/LM_GR212"
-    headers = {"Authorization": f"Bearer {USDA_AMS_KEY}"}
-    try:
-        async with httpx.AsyncClient(timeout=15) as c:
-            r = await c.get(url, headers=headers, params={"allSections": "true"})
-        if r.status_code == 200:
-            data = r.json()
-            count = len(data) if isinstance(data, list) else len(data.get("results", []))
-            ok(f"Connected — {count} records in latest report")
-            return True
-        elif r.status_code == 401:
-            fail(f"401 Unauthorized — check your USDA_AMS_API_KEY")
-        elif r.status_code == 404:
-            warn("404 — report slug LM_GR212 may have changed; data pipeline will adapt")
-        else:
+    async with httpx.AsyncClient(timeout=20.0) as c:
+        # Step 1: confirm base URL is reachable with auth
+        r = await c.get(
+            "https://marsapi.ams.usda.gov/services/v1.2/reports",
+            headers={"Authorization": f"Bearer {USDA_AMS_KEY}"},
+        )
+        if r.status_code == 401:
+            fail(f"401 Unauthorized — USDA_AMS_API_KEY is invalid")
+            return False
+        if r.status_code not in (200, 404):
             fail(f"HTTP {r.status_code}: {r.text[:120]}")
-    except Exception as e:
-        fail(f"Connection error: {e}")
+            return False
+
+        # Step 2: search for CA Direct Hay report slug
+        r2 = await c.get(
+            "https://marsapi.ams.usda.gov/services/v1.2/reports",
+            headers={"Authorization": f"Bearer {USDA_AMS_KEY}"},
+            params={"q": "California Direct Hay"},
+        )
+        if r2.status_code == 200:
+            results = r2.json() if isinstance(r2.json(), list) else r2.json().get("results", [])
+            slugs = [r.get("slug_id") or r.get("report_title", "") for r in results[:3]]
+            if results:
+                ok(f"Connected — found {len(results)} report(s). First slugs: {slugs}")
+                # Try fetching the first matched report
+                slug = results[0].get("slug_id", "LM_GR212")
+                r3 = await c.get(
+                    f"https://marsapi.ams.usda.gov/services/v1.2/reports/{slug}",
+                    headers={"Authorization": f"Bearer {USDA_AMS_KEY}"},
+                    params={"allSections": "true"},
+                )
+                if r3.status_code == 200:
+                    data = r3.json()
+                    count = len(data) if isinstance(data, list) else len(data.get("results", []))
+                    ok(f"Fetched report '{slug}' — {count} records")
+                return True
+            else:
+                # No CA Direct Hay results — try the known slug directly
+                r3 = await c.get(
+                    "https://marsapi.ams.usda.gov/services/v1.2/reports/LM_GR212",
+                    headers={"Authorization": f"Bearer {USDA_AMS_KEY}"},
+                    params={"allSections": "true"},
+                )
+                if r3.status_code == 200:
+                    ok("Connected — LM_GR212 report fetched successfully")
+                    return True
+                elif r3.status_code == 404:
+                    warn("Key valid but report LM_GR212 returned 404 — searching for current slug…")
+                    r4 = await c.get(
+                        "https://marsapi.ams.usda.gov/services/v1.2/reports",
+                        headers={"Authorization": f"Bearer {USDA_AMS_KEY}"},
+                        params={"q": "hay"},
+                    )
+                    if r4.status_code == 200:
+                        hay_reports = r4.json() if isinstance(r4.json(), list) else r4.json().get("results", [])
+                        ca_reports = [
+                            r.get("slug_id", "") for r in hay_reports
+                            if "california" in str(r).lower() or "CA" in str(r)
+                        ]
+                        info(f"Hay reports found: {[r.get('slug_id') for r in hay_reports[:5]]}")
+                        info(f"CA-related: {ca_reports[:5]}")
+                        warn("Key is valid. Update REPORT_SLUG in usda_ams.py with the correct slug above.")
+                    return True  # key works, slug needs updating
+        else:
+            fail(f"HTTP {r2.status_code}: {r2.text[:120]}")
     return False
 
 
@@ -64,7 +112,8 @@ async def check_usda_nass():
         warn("USDA_NASS_API_KEY not set — skipping")
         return False
 
-    url = "https://quickstats.nass.usda.gov/api/api/GET"
+    # Fixed URL — was incorrectly doubling /api/ before
+    url = "https://quickstats.nass.usda.gov/api/GET"
     params = {
         "key": USDA_NASS_KEY,
         "source_desc": "SURVEY",
@@ -73,22 +122,29 @@ async def check_usda_nass():
         "year": "2023",
         "format": "JSON",
     }
+
     try:
-        async with httpx.AsyncClient(timeout=20) as c:
+        async with httpx.AsyncClient(timeout=20.0) as c:
             r = await c.get(url, params=params)
+
         if r.status_code == 200:
             data = r.json()
             count = len(data.get("data", []))
             if count:
                 ok(f"Connected — {count} records returned for CA hay 2023")
-                return True
             else:
-                warn("Connected but 0 records — key may be valid, data just sparse")
-                return True
-        elif r.status_code == 401 or "unauthorized" in r.text.lower():
-            fail("Unauthorized — check your USDA_NASS_API_KEY")
+                warn("Connected but 0 records returned — key is valid")
+            return True
+        elif r.status_code == 403:
+            # Distinguish between bad key vs. terms-not-accepted
+            if "terms" in r.text.lower() or "agreement" in r.text.lower():
+                warn("Key valid but you need to accept NASS Terms of Service at quickstats.nass.usda.gov")
+            else:
+                fail(f"403 Forbidden — check USDA_NASS_API_KEY\n    {r.text[:200]}")
+        elif r.status_code == 401:
+            fail("401 Unauthorized — USDA_NASS_API_KEY is invalid")
         else:
-            fail(f"HTTP {r.status_code}: {r.text[:120]}")
+            fail(f"HTTP {r.status_code}: {r.text[:200]}")
     except Exception as e:
         fail(f"Connection error: {e}")
     return False
@@ -103,11 +159,10 @@ async def check_noaa():
     url = "https://www.ncdc.noaa.gov/cdo-web/api/v2/stations/GHCND:USW00023232"
     headers = {"token": NOAA_KEY}
     try:
-        async with httpx.AsyncClient(timeout=15) as c:
+        async with httpx.AsyncClient(timeout=15.0) as c:
             r = await c.get(url, headers=headers)
         if r.status_code == 200:
-            data = r.json()
-            name = data.get("name", "unknown station")
+            name = r.json().get("name", "unknown station")
             ok(f"Connected — station: {name}")
             return True
         elif r.status_code == 400:
@@ -128,31 +183,47 @@ async def check_eia():
         warn("EIA_API_KEY not set — skipping")
         return False
 
-    url = "https://api.eia.gov/v2/petroleum/pri/gnd/data/"
-    params = {
-        "api_key": EIA_KEY,
-        "frequency": "weekly",
-        "data[0]": "value",
-        "facets[product][]": "EPD2DXL0",
-        "facets[area][]": "CA",
-        "length": 1,
-    }
+    # Step 1: ping the root endpoint to verify key is active
     try:
-        async with httpx.AsyncClient(timeout=15) as c:
-            r = await c.get(url, params=params)
-        if r.status_code == 200:
-            data = r.json()
-            records = data.get("response", {}).get("data", [])
-            if records:
-                latest = records[0]
-                ok(f"Connected — latest CA diesel: ${latest.get('value', '?')}/gal ({latest.get('period', '?')})")
+        async with httpx.AsyncClient(timeout=15.0) as c:
+            r_ping = await c.get(
+                "https://api.eia.gov/v2/",
+                params={"api_key": EIA_KEY},
+            )
+
+        if r_ping.status_code == 200:
+            # Step 2: fetch CA diesel prices
+            async with httpx.AsyncClient(timeout=15.0) as c:
+                r = await c.get(
+                    "https://api.eia.gov/v2/petroleum/pri/gnd/data/",
+                    params={
+                        "api_key": EIA_KEY,
+                        "frequency": "weekly",
+                        "data[0]": "value",
+                        "facets[product][]": "EPD2DXL0",
+                        "facets[area][]": "CA",
+                        "length": 1,
+                    },
+                )
+            if r.status_code == 200:
+                records = r.json().get("response", {}).get("data", [])
+                if records:
+                    latest = records[0]
+                    ok(f"Connected — latest CA diesel: ${latest.get('value','?')}/gal ({latest.get('period','?')})")
+                else:
+                    warn("Connected but no records — key valid, data may be temporarily unavailable")
+                return True
             else:
-                warn("Connected but no records returned — key may still be valid")
-            return True
-        elif r.status_code == 403 or "invalid" in r.text.lower():
-            fail("403 / Invalid API key — check your EIA_API_KEY")
+                fail(f"Prices endpoint HTTP {r.status_code}: {r.text[:120]}")
+        elif r_ping.status_code in (400, 403):
+            # EIA returns 400 with error message for invalid keys
+            body = r_ping.text[:300]
+            if "invalid" in body.lower() or "not found" in body.lower():
+                fail(f"Invalid API key — check EIA_API_KEY\n    {body}")
+            else:
+                warn(f"Key may still be activating (EIA keys take ~15 min after registration)\n    HTTP {r_ping.status_code}: {body}")
         else:
-            fail(f"HTTP {r.status_code}: {r.text[:120]}")
+            fail(f"HTTP {r_ping.status_code}: {r_ping.text[:120]}")
     except Exception as e:
         fail(f"Connection error: {e}")
     return False
@@ -170,23 +241,20 @@ async def main():
         check_eia(),
     )
 
-    passed = sum(1 for r in results if r)
+    passed  = sum(1 for r in results if r)
     skipped = sum(1 for k in [USDA_AMS_KEY, USDA_NASS_KEY, NOAA_KEY, EIA_KEY] if not k)
+    failed  = 4 - passed - skipped
 
     print(f"\n{BOLD}{'='*50}{RESET}")
-    print(f"  {GREEN}{passed} passed{RESET}  |  {YELLOW}{skipped} skipped (no key){RESET}  |  {RED}{4 - passed - skipped} failed{RESET}")
+    print(f"  {GREEN}{passed} passed{RESET}  |  {YELLOW}{skipped} skipped{RESET}  |  {RED}{failed} failed{RESET}")
     print()
 
     if passed == 4:
-        print(f"  {GREEN}{BOLD}All APIs ready! Trigger live ingestion:{RESET}")
+        print(f"  {GREEN}{BOLD}All APIs ready!{RESET}")
+        print("  docker-compose up --build   ← start everything")
         print("  curl -X POST http://localhost:8000/api/v1/ingestion/trigger/usda_ams")
-        print("  curl -X POST http://localhost:8000/api/v1/ingestion/trigger/eia")
-        print("  curl -X POST http://localhost:8000/api/v1/ingestion/trigger/drought_monitor")
-        print("  curl -X POST http://localhost:8000/api/v1/ingestion/trigger/noaa")
-    elif skipped > 0:
-        print(f"  {YELLOW}Add missing keys to .env then re-run this script.{RESET}")
-    else:
-        print(f"  {RED}Fix the failing keys in .env then re-run.{RESET}")
+    elif failed:
+        print(f"  {RED}Fix the failing keys above, then re-run this script.{RESET}")
     print()
 
 

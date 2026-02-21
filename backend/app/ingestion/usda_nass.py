@@ -17,7 +17,7 @@ from app.config import settings
 
 logger = logging.getLogger(__name__)
 
-BASE_URL = "https://quickstats.nass.usda.gov/api"
+BASE_URL = "https://quickstats.nass.usda.gov"
 
 
 class USDANassClient:
