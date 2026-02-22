@@ -132,31 +132,54 @@ async def check_usda_nass():
         if r_pv.status_code == 200:
             commodities = r_pv.json().get("commodity_desc", [])
             ok(f"Key valid — get_param_values returned {len(commodities)} commodities")
-            # Step 2: try data endpoint — use state_alpha=CA (not state_name) and a
-            # broad year range since NASS often lags 1–2 years on annual crop surveys.
-            try:
+
+            # Shared params used for both counts and GET probes
+            data_params = {
+                "key": USDA_NASS_KEY,
+                "source_desc": "SURVEY",
+                "commodity_desc": "HAY",
+                "statisticcat_desc": "PRODUCTION",
+                "agg_level_desc": "STATE",
+                "state_alpha": "CA",
+                "year__GE": "2018",
+                "format": "JSON",
+            }
+
+            # Step 2a: counts endpoint — lightweight, tells us if params are valid
+            async with httpx.AsyncClient(timeout=20.0, follow_redirects=True) as c:
+                r_cnt = await c.get(f"{base}/counts", params=data_params)
+
+            if r_cnt.status_code == 200:
+                n = r_cnt.json().get("count", "?")
+                ok(f"counts endpoint — {n} matching CA hay records exist")
+                # Step 2b: actual data fetch
                 async with httpx.AsyncClient(timeout=20.0, follow_redirects=True) as c:
-                    r = await c.get(
-                        f"{base}/GET",
-                        params={
-                            "key": USDA_NASS_KEY,
-                            "source_desc": "SURVEY",
-                            "commodity_desc": "HAY",
-                            "statisticcat_desc": "PRODUCTION",
-                            "agg_level_desc": "STATE",
-                            "state_alpha": "CA",
-                            "year__GE": "2018",
-                            "format": "JSON",
-                        },
-                    )
+                    r = await c.get(f"{base}/GET", params=data_params)
                 if r.status_code == 200:
                     count = len(r.json().get("data", []))
                     ok(f"Data endpoint — {count} CA hay production records (2018+)")
                 else:
-                    warn(f"GET endpoint returned {r.status_code}: {r.text[:200]}")
-                    info("  → Key is valid; run on a local machine if Colab IP is blocked")
-            except Exception as e2:
-                warn(f"Data endpoint error (key is valid): {type(e2).__name__}: {e2}")
+                    warn(f"counts={n} but GET returned {r.status_code}: {r.text[:200]}")
+                    info("  → Data exists; NASS may block bulk GET from cloud IPs")
+                    info("  → Ingestion will work from a non-cloud server/local machine")
+            elif r_cnt.status_code == 404:
+                # params produced no results — diagnose which param is wrong
+                warn(f"counts 404 — no rows match these params; probing valid statisticcat values …")
+                async with httpx.AsyncClient(timeout=20.0, follow_redirects=True) as c:
+                    r_sc = await c.get(
+                        f"{base}/get_param_values",
+                        params={"key": USDA_NASS_KEY, "param": "statisticcat_desc",
+                                "commodity_desc": "HAY", "source_desc": "SURVEY",
+                                "state_alpha": "CA"},
+                    )
+                if r_sc.status_code == 200:
+                    valid_cats = r_sc.json().get("statisticcat_desc", [])
+                    info(f"  → Valid statisticcat_desc for HAY/SURVEY/CA: {valid_cats}")
+                    info("  → Update statisticcat_desc in check_apis.py and usda_nass.py to match")
+                else:
+                    info(f"  → Could not fetch valid statisticcat values: {r_sc.status_code}")
+            else:
+                warn(f"counts endpoint returned {r_cnt.status_code}: {r_cnt.text[:200]}")
             return True
 
         elif r_pv.status_code in (403, 404):
