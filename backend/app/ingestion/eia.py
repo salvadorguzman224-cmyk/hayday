@@ -37,8 +37,8 @@ class EIAClient:
             "api_key": self._api_key,
             "frequency": "weekly",
             "data[0]": "value",
-            "facets[product][]": "EPD2DXL0",  # on-highway diesel
-            "facets[area][]": "CA",            # California
+            "facets[product][]": "EPD2DXL0",    # on-highway diesel
+            "facets[duoarea][]": "SCA",          # California (EIA v2 uses duoarea, not area)
             "start": start_date.isoformat(),
             "end": end_date.isoformat(),
             "sort[0][column]": "period",

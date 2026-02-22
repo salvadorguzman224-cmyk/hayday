@@ -38,7 +38,8 @@ async def check_usda_ams():
         warn("USDA_AMS_API_KEY not set — skipping")
         return False
 
-    async with httpx.AsyncClient(timeout=20.0) as c:
+    try:
+      async with httpx.AsyncClient(timeout=20.0) as c:
         # Step 1: confirm base URL is reachable with auth
         r = await c.get(
             "https://marsapi.ams.usda.gov/services/v1.2/reports",
@@ -102,7 +103,9 @@ async def check_usda_ams():
                         warn("Key is valid. Update REPORT_SLUG in usda_ams.py with the correct slug above.")
                     return True  # key works, slug needs updating
         else:
-            fail(f"HTTP {r2.status_code}: {r2.text[:120]}")
+              fail(f"HTTP {r2.status_code}: {r2.text[:120]}")
+    except Exception as e:
+        fail(f"Connection error: {type(e).__name__}: {e}")
     return False
 
 
@@ -112,41 +115,35 @@ async def check_usda_nass():
         warn("USDA_NASS_API_KEY not set — skipping")
         return False
 
-    # Fixed URL — was incorrectly doubling /api/ before
     url = "https://quickstats.nass.usda.gov/api/GET"
-    params = {
-        "key": USDA_NASS_KEY,
-        "source_desc": "SURVEY",
-        "commodity_desc": "HAY",
-        "state_name": "CALIFORNIA",
-        "year": "2023",
-        "format": "JSON",
-    }
+
+    # Try minimal params first — just key + one required filter
+    params_minimal = {"key": USDA_NASS_KEY, "commodity_desc": "HAY",
+                      "state_name": "CALIFORNIA", "year": "2023", "format": "JSON"}
 
     try:
         async with httpx.AsyncClient(timeout=20.0) as c:
-            r = await c.get(url, params=params)
+            r = await c.get(url, params=params_minimal)
 
         if r.status_code == 200:
-            data = r.json()
-            count = len(data.get("data", []))
-            if count:
-                ok(f"Connected — {count} records returned for CA hay 2023")
-            else:
-                warn("Connected but 0 records returned — key is valid")
+            count = len(r.json().get("data", []))
+            ok(f"Connected — {count} CA hay records for 2023")
             return True
         elif r.status_code == 403:
-            # Distinguish between bad key vs. terms-not-accepted
-            if "terms" in r.text.lower() or "agreement" in r.text.lower():
-                warn("Key valid but you need to accept NASS Terms of Service at quickstats.nass.usda.gov")
+            body = r.text[:400]
+            if "terms" in body.lower() or "agreement" in body.lower():
+                warn("Key valid — you need to accept Terms of Service at quickstats.nass.usda.gov")
+            elif "access" in body.lower():
+                warn(f"403 Access denied — key may need activation or ToS acceptance\n    {body}")
+                info("→ Log in at quickstats.nass.usda.gov and confirm your account is active")
             else:
-                fail(f"403 Forbidden — check USDA_NASS_API_KEY\n    {r.text[:200]}")
+                fail(f"403 Forbidden\n    {body}")
         elif r.status_code == 401:
             fail("401 Unauthorized — USDA_NASS_API_KEY is invalid")
         else:
-            fail(f"HTTP {r.status_code}: {r.text[:200]}")
+            fail(f"HTTP {r.status_code}: {r.text[:300]}")
     except Exception as e:
-        fail(f"Connection error: {e}")
+        fail(f"Connection error: {type(e).__name__}: {e}")
     return False
 
 
@@ -201,7 +198,7 @@ async def check_eia():
                         "frequency": "weekly",
                         "data[0]": "value",
                         "facets[product][]": "EPD2DXL0",
-                        "facets[area][]": "CA",
+                        "facets[duoarea][]": "SCA",   # EIA v2 uses duoarea not area
                         "length": 1,
                     },
                 )
