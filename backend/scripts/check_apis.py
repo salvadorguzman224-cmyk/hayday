@@ -38,72 +38,76 @@ async def check_usda_ams():
         warn("USDA_AMS_API_KEY not set — skipping")
         return False
 
-    try:
-      async with httpx.AsyncClient(timeout=20.0) as c:
-        # Step 1: confirm base URL is reachable with auth
-        r = await c.get(
-            "https://marsapi.ams.usda.gov/services/v1.2/reports",
-            headers={"Authorization": f"Bearer {USDA_AMS_KEY}"},
-        )
-        if r.status_code == 401:
-            fail(f"401 Unauthorized — USDA_AMS_API_KEY is invalid")
-            return False
-        if r.status_code not in (200, 404):
-            fail(f"HTTP {r.status_code}: {r.text[:120]}")
-            return False
+    # MARS API uses HTTP Basic Auth: api_key as username, empty password
+    _auth = (USDA_AMS_KEY, "")
 
-        # Step 2: search for CA Direct Hay report slug
-        r2 = await c.get(
-            "https://marsapi.ams.usda.gov/services/v1.2/reports",
-            headers={"Authorization": f"Bearer {USDA_AMS_KEY}"},
-            params={"q": "California Direct Hay"},
-        )
-        if r2.status_code == 200:
-            results = r2.json() if isinstance(r2.json(), list) else r2.json().get("results", [])
-            slugs = [r.get("slug_id") or r.get("report_title", "") for r in results[:3]]
-            if results:
-                ok(f"Connected — found {len(results)} report(s). First slugs: {slugs}")
-                # Try fetching the first matched report
-                slug = results[0].get("slug_id", "LM_GR212")
-                r3 = await c.get(
-                    f"https://marsapi.ams.usda.gov/services/v1.2/reports/{slug}",
-                    headers={"Authorization": f"Bearer {USDA_AMS_KEY}"},
-                    params={"allSections": "true"},
-                )
-                if r3.status_code == 200:
-                    data = r3.json()
-                    count = len(data) if isinstance(data, list) else len(data.get("results", []))
-                    ok(f"Fetched report '{slug}' — {count} records")
-                return True
-            else:
-                # No CA Direct Hay results — try the known slug directly
-                r3 = await c.get(
-                    "https://marsapi.ams.usda.gov/services/v1.2/reports/LM_GR212",
-                    headers={"Authorization": f"Bearer {USDA_AMS_KEY}"},
-                    params={"allSections": "true"},
-                )
-                if r3.status_code == 200:
-                    ok("Connected — LM_GR212 report fetched successfully")
-                    return True
-                elif r3.status_code == 404:
-                    warn("Key valid but report LM_GR212 returned 404 — searching for current slug…")
-                    r4 = await c.get(
-                        "https://marsapi.ams.usda.gov/services/v1.2/reports",
-                        headers={"Authorization": f"Bearer {USDA_AMS_KEY}"},
-                        params={"q": "hay"},
+    try:
+        async with httpx.AsyncClient(timeout=20.0) as c:
+            # Step 1: confirm base URL is reachable with auth
+            r = await c.get(
+                "https://marsapi.ams.usda.gov/services/v1.2/reports",
+                auth=_auth,
+            )
+            if r.status_code == 401:
+                fail("401 Unauthorized — USDA_AMS_API_KEY is invalid")
+                return False
+            if r.status_code == 403:
+                fail(f"403 Forbidden — key may be inactive or IP blocked\n    {r.text[:200]}")
+                return False
+            if r.status_code not in (200, 404):
+                fail(f"HTTP {r.status_code}: {r.text[:120]}")
+                return False
+
+            # Step 2: search for CA Direct Hay report slug
+            r2 = await c.get(
+                "https://marsapi.ams.usda.gov/services/v1.2/reports",
+                auth=_auth,
+                params={"q": "California Direct Hay"},
+            )
+            if r2.status_code == 200:
+                results = r2.json() if isinstance(r2.json(), list) else r2.json().get("results", [])
+                slugs = [r.get("slug_id") or r.get("report_title", "") for r in results[:3]]
+                if results:
+                    ok(f"Connected — found {len(results)} report(s). First slugs: {slugs}")
+                    slug = results[0].get("slug_id", "LM_GR212")
+                    r3 = await c.get(
+                        f"https://marsapi.ams.usda.gov/services/v1.2/reports/{slug}",
+                        auth=_auth,
+                        params={"allSections": "true"},
                     )
-                    if r4.status_code == 200:
-                        hay_reports = r4.json() if isinstance(r4.json(), list) else r4.json().get("results", [])
-                        ca_reports = [
-                            r.get("slug_id", "") for r in hay_reports
-                            if "california" in str(r).lower() or "CA" in str(r)
-                        ]
-                        info(f"Hay reports found: {[r.get('slug_id') for r in hay_reports[:5]]}")
-                        info(f"CA-related: {ca_reports[:5]}")
-                        warn("Key is valid. Update REPORT_SLUG in usda_ams.py with the correct slug above.")
-                    return True  # key works, slug needs updating
-        else:
-              fail(f"HTTP {r2.status_code}: {r2.text[:120]}")
+                    if r3.status_code == 200:
+                        data = r3.json()
+                        count = len(data) if isinstance(data, list) else len(data.get("results", []))
+                        ok(f"Fetched report '{slug}' — {count} records")
+                    return True
+                else:
+                    r3 = await c.get(
+                        "https://marsapi.ams.usda.gov/services/v1.2/reports/LM_GR212",
+                        auth=_auth,
+                        params={"allSections": "true"},
+                    )
+                    if r3.status_code == 200:
+                        ok("Connected — LM_GR212 report fetched successfully")
+                        return True
+                    elif r3.status_code == 404:
+                        warn("Key valid but LM_GR212 returned 404 — searching for current slug…")
+                        r4 = await c.get(
+                            "https://marsapi.ams.usda.gov/services/v1.2/reports",
+                            auth=_auth,
+                            params={"q": "hay"},
+                        )
+                        if r4.status_code == 200:
+                            hay_reports = r4.json() if isinstance(r4.json(), list) else r4.json().get("results", [])
+                            ca_reports = [
+                                r.get("slug_id", "") for r in hay_reports
+                                if "california" in str(r).lower() or "CA" in str(r)
+                            ]
+                            info(f"Hay reports found: {[r.get('slug_id') for r in hay_reports[:5]]}")
+                            info(f"CA-related: {ca_reports[:5]}")
+                            warn("Key valid. Update REPORT_SLUG in usda_ams.py with the slug above.")
+                        return True
+            else:
+                fail(f"HTTP {r2.status_code}: {r2.text[:120]}")
     except Exception as e:
         fail(f"Connection error: {type(e).__name__}: {e}")
     return False
@@ -134,8 +138,10 @@ async def check_usda_nass():
             if "terms" in body.lower() or "agreement" in body.lower():
                 warn("Key valid — you need to accept Terms of Service at quickstats.nass.usda.gov")
             elif "access" in body.lower():
-                warn(f"403 Access denied — key may need activation or ToS acceptance\n    {body}")
-                info("→ Log in at quickstats.nass.usda.gov and confirm your account is active")
+                warn(f"403 Access denied — one of three causes:\n    {body}")
+                info("  1. Key not yet activated — register at quickstats.nass.usda.gov/api and confirm email")
+                info("  2. Terms of Service not accepted — log in and accept at quickstats.nass.usda.gov")
+                info("  3. Colab/GCP IP block — USDA sometimes blocks cloud-provider IPs; test from a local machine")
             else:
                 fail(f"403 Forbidden\n    {body}")
         elif r.status_code == 401:

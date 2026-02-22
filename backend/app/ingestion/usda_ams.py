@@ -58,9 +58,8 @@ GRADE_MAP: dict[str, str] = {
 class USDAamsClient:
     def __init__(self) -> None:
         self._api_key = settings.USDA_AMS_API_KEY
-        self._headers = {}
-        if self._api_key:
-            self._headers["Authorization"] = f"Bearer {self._api_key}"
+        # MARS API uses HTTP Basic Auth: api_key as username, empty password
+        self._auth = (self._api_key, "") if self._api_key else None
 
     @retry(stop=stop_after_attempt(4), wait=wait_exponential(multiplier=2, min=2, max=30))
     async def fetch_latest(self) -> list[dict[str, Any]]:
@@ -69,7 +68,7 @@ class USDAamsClient:
         params = {"allSections": "true"}
 
         async with httpx.AsyncClient(timeout=30.0) as client:
-            resp = await client.get(url, headers=self._headers, params=params)
+            resp = await client.get(url, auth=self._auth, params=params)
             resp.raise_for_status()
             data = resp.json()
 
@@ -82,7 +81,7 @@ class USDAamsClient:
         params = {"allSections": "true"}
 
         async with httpx.AsyncClient(timeout=30.0) as client:
-            resp = await client.get(url, headers=self._headers, params=params)
+            resp = await client.get(url, auth=self._auth, params=params)
             if resp.status_code == 404:
                 return []
             resp.raise_for_status()
