@@ -119,15 +119,21 @@ async def check_usda_nass():
         warn("USDA_NASS_API_KEY not set — skipping")
         return False
 
-    url = "https://quickstats.nass.usda.gov/api/GET"
-
-    # Try minimal params first — just key + one required filter
-    params_minimal = {"key": USDA_NASS_KEY, "commodity_desc": "HAY",
-                      "state_name": "CALIFORNIA", "year": "2023", "format": "JSON"}
+    # NASS needs follow_redirects; also needs statisticcat_desc to stay under 50k row limit
+    base = "https://quickstats.nass.usda.gov/api/GET"
+    params_minimal = {
+        "key": USDA_NASS_KEY,
+        "source_desc": "SURVEY",
+        "commodity_desc": "HAY",
+        "statisticcat_desc": "PRODUCTION",
+        "state_name": "CALIFORNIA",
+        "year": "2023",
+        "format": "JSON",
+    }
 
     try:
-        async with httpx.AsyncClient(timeout=20.0) as c:
-            r = await c.get(url, params=params_minimal)
+        async with httpx.AsyncClient(timeout=20.0, follow_redirects=True) as c:
+            r = await c.get(base, params=params_minimal)
 
         if r.status_code == 200:
             count = len(r.json().get("data", []))
@@ -144,6 +150,14 @@ async def check_usda_nass():
                 info("  3. Colab/GCP IP block — USDA sometimes blocks cloud-provider IPs; test from a local machine")
             else:
                 fail(f"403 Forbidden\n    {body}")
+        elif r.status_code == 404:
+            body = r.text[:300]
+            if "page not found" in body.lower() or "not found" in body.lower():
+                fail(f"404 — NASS API path not found: {body}")
+                info("  → The endpoint URL may have changed; check quickstats.nass.usda.gov/api")
+                info("  → Also verify USDA_NASS_API_KEY is the exact key emailed to you")
+            else:
+                fail(f"HTTP 404: {body}")
         elif r.status_code == 401:
             fail("401 Unauthorized — USDA_NASS_API_KEY is invalid")
         else:

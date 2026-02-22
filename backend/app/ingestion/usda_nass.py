@@ -42,7 +42,7 @@ class USDANassClient:
             "format": "JSON",
         }
 
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
             resp = await client.get(f"{BASE_URL}/api/GET", params=params)
             resp.raise_for_status()
             data = resp.json()
@@ -66,7 +66,7 @@ class USDANassClient:
             "format": "JSON",
         }
 
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
             resp = await client.get(f"{BASE_URL}/api/GET", params=params)
             resp.raise_for_status()
             data = resp.json()
