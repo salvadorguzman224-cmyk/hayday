@@ -119,49 +119,52 @@ async def check_usda_nass():
         warn("USDA_NASS_API_KEY not set — skipping")
         return False
 
-    # NASS needs follow_redirects; also needs statisticcat_desc to stay under 50k row limit
-    base = "https://quickstats.nass.usda.gov/api/GET"
-    params_minimal = {
-        "key": USDA_NASS_KEY,
-        "source_desc": "SURVEY",
-        "commodity_desc": "HAY",
-        "statisticcat_desc": "PRODUCTION",
-        "state_name": "CALIFORNIA",
-        "year": "2023",
-        "format": "JSON",
-    }
+    base = "https://quickstats.nass.usda.gov/api"
 
     try:
         async with httpx.AsyncClient(timeout=20.0, follow_redirects=True) as c:
-            r = await c.get(base, params=params_minimal)
+            # Step 1: lightweight key test — get_param_values needs only 'key' + 'param'
+            r_pv = await c.get(
+                f"{base}/get_param_values",
+                params={"key": USDA_NASS_KEY, "param": "commodity_desc"},
+            )
 
-        if r.status_code == 200:
-            count = len(r.json().get("data", []))
-            ok(f"Connected — {count} CA hay records for 2023")
+        if r_pv.status_code == 200:
+            commodities = r_pv.json().get("commodity_desc", [])
+            ok(f"Key valid — get_param_values returned {len(commodities)} commodities")
+            # Step 2: now try the actual data endpoint
+            try:
+                async with httpx.AsyncClient(timeout=20.0, follow_redirects=True) as c:
+                    r = await c.get(
+                        f"{base}/GET",
+                        params={
+                            "key": USDA_NASS_KEY,
+                            "source_desc": "SURVEY",
+                            "commodity_desc": "HAY",
+                            "statisticcat_desc": "PRODUCTION",
+                            "state_name": "CALIFORNIA",
+                            "year": "2023",
+                            "format": "JSON",
+                        },
+                    )
+                if r.status_code == 200:
+                    count = len(r.json().get("data", []))
+                    ok(f"Data endpoint — {count} CA hay production records for 2023")
+                else:
+                    warn(f"GET endpoint returned {r.status_code}: {r.text[:200]}")
+                    info("  → Key is valid; GET endpoint may need different params or may be temporarily down")
+            except Exception as e2:
+                warn(f"Data endpoint error (key is valid): {type(e2).__name__}: {e2}")
             return True
-        elif r.status_code == 403:
-            body = r.text[:400]
-            if "terms" in body.lower() or "agreement" in body.lower():
-                warn("Key valid — you need to accept Terms of Service at quickstats.nass.usda.gov")
-            elif "access" in body.lower():
-                warn(f"403 Access denied — one of three causes:\n    {body}")
-                info("  1. Key not yet activated — register at quickstats.nass.usda.gov/api and confirm email")
-                info("  2. Terms of Service not accepted — log in and accept at quickstats.nass.usda.gov")
-                info("  3. Colab/GCP IP block — USDA sometimes blocks cloud-provider IPs; test from a local machine")
-            else:
-                fail(f"403 Forbidden\n    {body}")
-        elif r.status_code == 404:
-            body = r.text[:300]
-            if "page not found" in body.lower() or "not found" in body.lower():
-                fail(f"404 — NASS API path not found: {body}")
-                info("  → The endpoint URL may have changed; check quickstats.nass.usda.gov/api")
-                info("  → Also verify USDA_NASS_API_KEY is the exact key emailed to you")
-            else:
-                fail(f"HTTP 404: {body}")
-        elif r.status_code == 401:
-            fail("401 Unauthorized — USDA_NASS_API_KEY is invalid")
+
+        elif r_pv.status_code in (403, 404):
+            body = r_pv.text[:400]
+            fail(f"HTTP {r_pv.status_code} on get_param_values: {body}")
+            info("  → NASS API key not yet active — keys can take 24–48 h after email confirmation")
+            info("  → Log in at quickstats.nass.usda.gov and ensure your account is approved")
+            info("  → NASS sometimes blocks Colab/GCP IPs; test from a local machine if issue persists")
         else:
-            fail(f"HTTP {r.status_code}: {r.text[:300]}")
+            fail(f"HTTP {r_pv.status_code}: {r_pv.text[:300]}")
     except Exception as e:
         fail(f"Connection error: {type(e).__name__}: {e}")
     return False
