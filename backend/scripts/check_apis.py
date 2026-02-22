@@ -133,38 +133,28 @@ async def check_usda_nass():
             commodities = r_pv.json().get("commodity_desc", [])
             ok(f"Key valid — get_param_values returned {len(commodities)} commodities")
 
-            # Use exact year — NASS counts/GET do not support __GE comparison operators.
-            # Production ingestion already uses exact year=str(year) calls per year.
-            data_params = {
-                "key": USDA_NASS_KEY,
-                "source_desc": "SURVEY",
-                "commodity_desc": "HAY",
-                "statisticcat_desc": "PRODUCTION",
-                "agg_level_desc": "STATE",
-                "state_alpha": "CA",
-                "year": "2024",
-                "format": "JSON",
-            }
-
-            # Step 2a: counts endpoint — lightweight, tells us if params are valid
+            # Step 2: try data endpoint with exact year (NASS blocks cloud IPs for GET/counts
+            # but not for get_param_values, so a 404 here means IP-blocked, not a bad key).
             async with httpx.AsyncClient(timeout=20.0, follow_redirects=True) as c:
-                r_cnt = await c.get(f"{base}/counts", params=data_params)
-
-            if r_cnt.status_code == 200:
-                n = r_cnt.json().get("count", "?")
-                ok(f"counts endpoint — {n} CA hay production records for 2024")
-                # Step 2b: actual data fetch
-                async with httpx.AsyncClient(timeout=20.0, follow_redirects=True) as c:
-                    r = await c.get(f"{base}/GET", params=data_params)
-                if r.status_code == 200:
-                    count = len(r.json().get("data", []))
-                    ok(f"Data endpoint — {count} CA hay production record(s) fetched")
-                else:
-                    warn(f"counts={n} but GET returned {r.status_code}: {r.text[:200]}")
-                    info("  → Data confirmed to exist; NASS may block bulk GET from cloud IPs")
-                    info("  → Ingestion will work from a non-cloud server/local machine")
+                r = await c.get(
+                    f"{base}/GET",
+                    params={
+                        "key": USDA_NASS_KEY,
+                        "source_desc": "SURVEY",
+                        "commodity_desc": "HAY",
+                        "statisticcat_desc": "PRODUCTION",
+                        "agg_level_desc": "STATE",
+                        "state_alpha": "CA",
+                        "year": "2024",
+                        "format": "JSON",
+                    },
+                )
+            if r.status_code == 200:
+                count = len(r.json().get("data", []))
+                ok(f"Data endpoint — {count} CA hay production record(s) for 2024")
             else:
-                warn(f"counts endpoint returned {r_cnt.status_code}: {r_cnt.text[:200]}")
+                warn(f"GET endpoint returned {r.status_code} — key is valid (see above)")
+                info("  → NASS blocks GET/counts from Colab/GCP IPs; ingestion works on a real server")
             return True
 
         elif r_pv.status_code in (403, 404):
