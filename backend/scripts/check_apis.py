@@ -163,21 +163,44 @@ async def check_usda_nass():
                     info("  → Data exists; NASS may block bulk GET from cloud IPs")
                     info("  → Ingestion will work from a non-cloud server/local machine")
             elif r_cnt.status_code == 404:
-                # params produced no results — diagnose which param is wrong
-                warn(f"counts 404 — no rows match these params; probing valid statisticcat values …")
+                # params produced no results — progressively strip params to find culprit
+                warn("counts 404 — probing which param is causing the mismatch …")
                 async with httpx.AsyncClient(timeout=20.0, follow_redirects=True) as c:
-                    r_sc = await c.get(
-                        f"{base}/get_param_values",
-                        params={"key": USDA_NASS_KEY, "param": "statisticcat_desc",
-                                "commodity_desc": "HAY", "source_desc": "SURVEY",
-                                "state_alpha": "CA"},
+                    # Probe 1: bare minimum — just commodity + state (no agg_level, no year)
+                    r_bare = await c.get(
+                        f"{base}/counts",
+                        params={"key": USDA_NASS_KEY, "commodity_desc": "HAY",
+                                "state_alpha": "CA", "format": "JSON"},
                     )
-                if r_sc.status_code == 200:
-                    valid_cats = r_sc.json().get("statisticcat_desc", [])
-                    info(f"  → Valid statisticcat_desc for HAY/SURVEY/CA: {valid_cats}")
-                    info("  → Update statisticcat_desc in check_apis.py and usda_nass.py to match")
+                    # Probe 2: valid agg_level values for HAY/SURVEY/CA/PRODUCTION
+                    r_al = await c.get(
+                        f"{base}/get_param_values",
+                        params={"key": USDA_NASS_KEY, "param": "agg_level_desc",
+                                "commodity_desc": "HAY", "source_desc": "SURVEY",
+                                "state_alpha": "CA", "statisticcat_desc": "PRODUCTION"},
+                    )
+                    # Probe 3: valid year values for HAY/SURVEY/CA/PRODUCTION
+                    r_yr = await c.get(
+                        f"{base}/get_param_values",
+                        params={"key": USDA_NASS_KEY, "param": "year",
+                                "commodity_desc": "HAY", "source_desc": "SURVEY",
+                                "state_alpha": "CA", "statisticcat_desc": "PRODUCTION"},
+                    )
+
+                bare_n = r_bare.json().get("count", "?") if r_bare.status_code == 200 else f"404"
+                info(f"  → Bare counts (HAY+CA only): {bare_n}")
+
+                if r_al.status_code == 200:
+                    valid_al = r_al.json().get("agg_level_desc", [])
+                    info(f"  → Valid agg_level_desc for HAY/SURVEY/CA/PRODUCTION: {valid_al}")
                 else:
-                    info(f"  → Could not fetch valid statisticcat values: {r_sc.status_code}")
+                    info(f"  → Could not fetch agg_level_desc values: {r_al.status_code}")
+
+                if r_yr.status_code == 200:
+                    valid_yr = r_yr.json().get("year", [])
+                    info(f"  → Valid years for HAY/SURVEY/CA/PRODUCTION: {valid_yr[-5:]} (last 5)")
+                else:
+                    info(f"  → Could not fetch year values: {r_yr.status_code}")
             else:
                 warn(f"counts endpoint returned {r_cnt.status_code}: {r_cnt.text[:200]}")
             return True
