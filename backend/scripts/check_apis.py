@@ -132,7 +132,8 @@ async def check_usda_nass():
         if r_pv.status_code == 200:
             commodities = r_pv.json().get("commodity_desc", [])
             ok(f"Key valid — get_param_values returned {len(commodities)} commodities")
-            # Step 2: now try the actual data endpoint
+            # Step 2: try data endpoint — use state_alpha=CA (not state_name) and a
+            # broad year range since NASS often lags 1–2 years on annual crop surveys.
             try:
                 async with httpx.AsyncClient(timeout=20.0, follow_redirects=True) as c:
                     r = await c.get(
@@ -142,17 +143,18 @@ async def check_usda_nass():
                             "source_desc": "SURVEY",
                             "commodity_desc": "HAY",
                             "statisticcat_desc": "PRODUCTION",
-                            "state_name": "CALIFORNIA",
-                            "year": "2023",
+                            "agg_level_desc": "STATE",
+                            "state_alpha": "CA",
+                            "year__GE": "2018",
                             "format": "JSON",
                         },
                     )
                 if r.status_code == 200:
                     count = len(r.json().get("data", []))
-                    ok(f"Data endpoint — {count} CA hay production records for 2023")
+                    ok(f"Data endpoint — {count} CA hay production records (2018+)")
                 else:
                     warn(f"GET endpoint returned {r.status_code}: {r.text[:200]}")
-                    info("  → Key is valid; GET endpoint may need different params or may be temporarily down")
+                    info("  → Key is valid; run on a local machine if Colab IP is blocked")
             except Exception as e2:
                 warn(f"Data endpoint error (key is valid): {type(e2).__name__}: {e2}")
             return True

@@ -34,10 +34,10 @@ class USDANassClient:
         params = {
             "key": self._api_key,
             "source_desc": "SURVEY",
-            "sector_desc": "CROPS",
             "commodity_desc": "HAY",
             "statisticcat_desc": "PRODUCTION",
-            "state_name": "CALIFORNIA",
+            "agg_level_desc": "STATE",
+            "state_alpha": "CA",
             "year": str(year),
             "format": "JSON",
         }
@@ -58,10 +58,10 @@ class USDANassClient:
         params = {
             "key": self._api_key,
             "source_desc": "SURVEY",
-            "sector_desc": "CROPS",
             "commodity_desc": "HAY",
             "statisticcat_desc": "STOCKS",
-            "state_name": "CALIFORNIA",
+            "agg_level_desc": "STATE",
+            "state_alpha": "CA",
             "year": str(year),
             "format": "JSON",
         }
