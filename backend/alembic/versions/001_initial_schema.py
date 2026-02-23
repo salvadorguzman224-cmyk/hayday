@@ -15,12 +15,6 @@ depends_on = None
 
 
 def upgrade() -> None:
-    # Enable TimescaleDB if available (gracefully skip if not installed)
-    try:
-        op.execute("CREATE EXTENSION IF NOT EXISTS timescaledb CASCADE")
-    except Exception:
-        pass
-
     # --- hay_prices ---
     op.create_table(
         "hay_prices",
@@ -39,15 +33,6 @@ def upgrade() -> None:
     )
     op.create_index("ix_hay_prices_date_region", "hay_prices", ["report_date", "region"])
     op.create_index("ix_hay_prices_type", "hay_prices", ["hay_type", "grade"])
-
-    # Convert to TimescaleDB hypertable (gracefully skip if extension not available)
-    try:
-        op.execute(
-            "SELECT create_hypertable('hay_prices', 'report_date', "
-            "chunk_time_interval => INTERVAL '3 months', if_not_exists => TRUE)"
-        )
-    except Exception:
-        pass
 
     # --- weather_data ---
     op.create_table(
