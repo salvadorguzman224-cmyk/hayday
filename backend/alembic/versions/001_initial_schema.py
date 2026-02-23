@@ -15,8 +15,11 @@ depends_on = None
 
 
 def upgrade() -> None:
-    # Enable TimescaleDB if available (gracefully skip if not)
-    op.execute("CREATE EXTENSION IF NOT EXISTS timescaledb CASCADE")
+    # Enable TimescaleDB if available (gracefully skip if not installed)
+    try:
+        op.execute("CREATE EXTENSION IF NOT EXISTS timescaledb CASCADE")
+    except Exception:
+        pass
 
     # --- hay_prices ---
     op.create_table(
