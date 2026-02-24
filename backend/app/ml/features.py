@@ -118,7 +118,7 @@ def merge_supplemental(
     for col in ["drought_d2_pct", "drought_d3_pct", "drought_d4_pct",
                 "diesel_price", "precip_30d", "tmax_30d"]:
         if col in df.columns:
-            df[col] = df[col].ffill().fillna(0)
+            df[col] = df[col].ffill().fillna(0).astype(float)
 
     return df
 
