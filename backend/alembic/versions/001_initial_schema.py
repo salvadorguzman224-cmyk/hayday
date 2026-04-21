@@ -15,8 +15,14 @@ depends_on = None
 
 
 def upgrade() -> None:
-    # Enable TimescaleDB if available (gracefully skip if not)
-    op.execute("CREATE EXTENSION IF NOT EXISTS timescaledb CASCADE")
+    # Enable TimescaleDB only if the extension is available (not present on Colab/plain PG)
+    op.execute("""
+        DO $$ BEGIN
+            IF EXISTS (SELECT 1 FROM pg_available_extensions WHERE name = 'timescaledb') THEN
+                CREATE EXTENSION IF NOT EXISTS timescaledb CASCADE;
+            END IF;
+        END $$
+    """)
 
     # --- hay_prices ---
     op.create_table(
