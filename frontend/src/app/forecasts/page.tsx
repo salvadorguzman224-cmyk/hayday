@@ -16,7 +16,7 @@ const HORIZON_LABELS: Record<number, string> = {
 
 export default function ForecastsPage() {
   const [filter, setFilter] = useState({
-    region: "san_joaquin_valley",
+    region: "central_san_joaquin_valley",
     hayType: "alfalfa",
     grade: "premium",
   });

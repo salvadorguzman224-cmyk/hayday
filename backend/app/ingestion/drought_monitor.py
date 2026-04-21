@@ -17,13 +17,13 @@ logger = logging.getLogger(__name__)
 
 BASE_URL = "https://droughtmonitor.unl.edu/api/webservice"
 
-# Map our internal regions to CA county lists for the Drought Monitor query
+# Map our internal regions to CA county lists for the Drought Monitor query.
 REGION_COUNTIES: dict[str, list[str]] = {
-    "northern_ca": ["Shasta", "Lassen", "Modoc", "Siskiyou", "Trinity"],
-    "sacramento_valley": ["Sacramento", "Yolo", "Glenn", "Colusa", "Butte"],
-    "san_joaquin_valley": ["Fresno", "Tulare", "Kern", "Kings", "Merced"],
-    "southern_ca": ["Imperial", "Riverside", "San Bernardino"],
-    "coastal_ca": ["Marin", "Sonoma", "Santa Barbara", "Monterey"],
+    "central_san_joaquin_valley": ["Fresno", "Madera", "Kings", "Tulare", "Merced", "Kern"],
+    "north_intermountain":        ["Modoc", "Lassen", "Siskiyou", "Plumas", "Shasta"],
+    "north_san_joaquin_valley":   ["San Joaquin", "Stanislaus"],
+    "sacramento_valley":          ["Sacramento", "Yolo", "Sutter", "Yuba", "Colusa", "Butte", "Glenn", "Tehama"],
+    "southeast":                  ["Imperial", "Riverside", "San Bernardino", "Inyo"],
 }
 
 

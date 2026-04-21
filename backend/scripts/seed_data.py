@@ -32,11 +32,11 @@ DATABASE_URL = os.environ.get(
 # ── Simulation parameters ─────────────────────────────────────────────────────
 
 REGIONS = [
-    "northern_ca",
+    "central_san_joaquin_valley",
+    "north_intermountain",
+    "north_san_joaquin_valley",
     "sacramento_valley",
-    "san_joaquin_valley",
-    "southern_ca",
-    "coastal_ca",
+    "southeast",
 ]
 
 HAY_TYPES_GRADES: list[tuple[str, str]] = [
@@ -62,13 +62,13 @@ BASE_PRICES: dict[tuple[str, str], float] = {
     ("mixed", "good"): 210,
 }
 
-# Regional price adjustment (relative to base)
+# Regional price adjustment (relative to base, $/ton)
 REGION_ADJ: dict[str, float] = {
-    "northern_ca": -10,
-    "sacramento_valley": 0,
-    "san_joaquin_valley": 5,
-    "southern_ca": 20,   # desert premium / transport cost
-    "coastal_ca": 30,    # premium coastal market
+    "central_san_joaquin_valley":  0,    # biggest production area — base price
+    "north_san_joaquin_valley":    5,    # dairy demand bumps it
+    "sacramento_valley":          -5,    # production area, slightly cheaper
+    "north_intermountain":        15,    # remote, transport cost
+    "southeast":                  10,    # Imperial production + desert transport
 }
 
 # Seasonal amplitude (high in Jul-Sep = peak cutting/storage demand)

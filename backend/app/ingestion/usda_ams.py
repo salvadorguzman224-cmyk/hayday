@@ -22,17 +22,17 @@ logger = logging.getLogger(__name__)
 BASE_URL = "https://marsapi.ams.usda.gov/services/v1.2"
 REPORT_SLUG = "LM_GR212"  # California Direct Hay — Weekly
 
-# Map USDA region strings to internal keys
+# Map USDA AMS LM_GR212 reporting-area strings to internal region keys.
+# Keys are matched case-insensitively via substring search (see _map_region),
+# so both "North Inter-Mountain" and "North Inter-Mountains" hit the same key.
 REGION_MAP: dict[str, str] = {
-    "Northern California": "northern_ca",
-    "Northern CA": "northern_ca",
+    "Central San Joaquin Valley": "central_san_joaquin_valley",
+    "North Inter-Mountain": "north_intermountain",
+    "North Intermountain": "north_intermountain",
+    "Intermountain": "north_intermountain",
+    "North San Joaquin Valley": "north_san_joaquin_valley",
     "Sacramento Valley": "sacramento_valley",
-    "Central California": "san_joaquin_valley",
-    "San Joaquin Valley": "san_joaquin_valley",
-    "Southern California": "southern_ca",
-    "Desert": "southern_ca",
-    "Imperial Valley": "southern_ca",
-    "Coastal": "coastal_ca",
+    "Southeast": "southeast",
 }
 
 HAY_TYPE_MAP: dict[str, str] = {
