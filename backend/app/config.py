@@ -29,19 +29,19 @@ settings = Settings()
 # ── Enumeration constants ─────────────────────────────────────────────────────
 
 REGIONS = [
-    "northern_ca",
+    "central_san_joaquin_valley",
+    "north_intermountain",
+    "north_san_joaquin_valley",
     "sacramento_valley",
-    "san_joaquin_valley",
-    "southern_ca",
-    "coastal_ca",
+    "southeast",
 ]
 
 REGION_LABELS = {
-    "northern_ca": "Northern California",
+    "central_san_joaquin_valley": "Central San Joaquin Valley",
+    "north_intermountain": "North Inter-Mountain",
+    "north_san_joaquin_valley": "North San Joaquin Valley",
     "sacramento_valley": "Sacramento Valley",
-    "san_joaquin_valley": "San Joaquin Valley",
-    "southern_ca": "Southern CA / Desert",
-    "coastal_ca": "Coastal California",
+    "southeast": "Southeast California",
 }
 
 HAY_TYPES = ["alfalfa", "grass", "oat", "sudan", "mixed", "straw"]

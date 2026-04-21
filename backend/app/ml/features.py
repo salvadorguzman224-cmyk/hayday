@@ -114,11 +114,12 @@ def merge_supplemental(
         df["precip_30d"] = 10.0
         df["tmax_30d"] = 25.0
 
-    # Forward-fill then zero-fill remaining NaN supplemental columns
+    # Cast supplemental columns to float (SQLAlchemy Decimal → object dtype otherwise)
+    # and forward-fill then zero-fill remaining NaNs.
     for col in ["drought_d2_pct", "drought_d3_pct", "drought_d4_pct",
                 "diesel_price", "precip_30d", "tmax_30d"]:
         if col in df.columns:
-            df[col] = df[col].ffill().fillna(0)
+            df[col] = pd.to_numeric(df[col], errors="coerce").ffill().fillna(0)
 
     return df
 
@@ -138,8 +139,8 @@ def prepare_training_data(
     available = [c for c in FEATURE_COLS if c in df.columns]
     df = df.dropna(subset=available + ["target"])
 
-    X = df[available]
-    y = df["target"]
+    X = df[available].apply(pd.to_numeric, errors="coerce")
+    y = df["target"].astype(float)
     return X, y
 
 

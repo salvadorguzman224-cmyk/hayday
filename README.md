@@ -68,10 +68,10 @@ All APIs are free with registration.
 ## Key API Endpoints
 
 ```
-GET  /api/v1/prices/series?region=san_joaquin_valley&hay_type=alfalfa&grade=premium
-GET  /api/v1/prices/latest?region=san_joaquin_valley
-GET  /api/v1/prices/summary?region=san_joaquin_valley&hay_type=alfalfa&grade=premium
-GET  /api/v1/forecasts/?region=san_joaquin_valley&hay_type=alfalfa&grade=premium
+GET  /api/v1/prices/series?region=central_san_joaquin_valley&hay_type=alfalfa&grade=premium
+GET  /api/v1/prices/latest?region=central_san_joaquin_valley
+GET  /api/v1/prices/summary?region=central_san_joaquin_valley&hay_type=alfalfa&grade=premium
+GET  /api/v1/forecasts/?region=central_san_joaquin_valley&hay_type=alfalfa&grade=premium
 POST /api/v1/forecasts/refresh?region=...&hay_type=...&grade=...
 POST /api/v1/alerts/
 GET  /api/v1/alerts/?email=user@example.com
@@ -114,13 +114,13 @@ curl -X POST http://localhost:8000/api/v1/ingestion/trigger/drought_monitor
 
 ## Regions
 
-| ID | Label |
-|----|-------|
-| `northern_ca` | Northern California |
-| `sacramento_valley` | Sacramento Valley |
-| `san_joaquin_valley` | San Joaquin Valley |
-| `southern_ca` | Southern CA / Desert |
-| `coastal_ca` | Coastal California |
+| ID | Label | Counties |
+|----|-------|----------|
+| `central_san_joaquin_valley` | Central San Joaquin Valley | Fresno, Madera, Kings, Tulare, Merced, Kern |
+| `north_intermountain` | North Inter-Mountain | Modoc, Lassen, Siskiyou, Plumas, Shasta |
+| `north_san_joaquin_valley` | North San Joaquin Valley | San Joaquin, Stanislaus |
+| `sacramento_valley` | Sacramento Valley | Sacramento, Yolo, Sutter, Yuba, Colusa, Butte, Glenn, Tehama |
+| `southeast` | Southeast California | Imperial, Riverside, San Bernardino, Inyo |
 
 ## Development
 

@@ -19,13 +19,14 @@ logger = logging.getLogger(__name__)
 
 BASE_URL = "https://www.ncdc.noaa.gov/cdo-web/api/v2"
 
-# Representative NOAA stations per CA region
+# Representative NOAA GHCND stations per CA region (approximate — one station
+# per region; tune if a specific hay-growing area is under-represented).
 REGION_STATIONS: dict[str, str] = {
-    "northern_ca": "GHCND:USW00024257",      # Redding
-    "sacramento_valley": "GHCND:USW00023232", # Sacramento
-    "san_joaquin_valley": "GHCND:USW00093193",# Fresno
-    "southern_ca": "GHCND:USW00003144",       # El Centro (Imperial Valley)
-    "coastal_ca": "GHCND:USW00023234",        # San Francisco
+    "central_san_joaquin_valley": "GHCND:USW00093193",  # Fresno Air Terminal
+    "north_intermountain":        "GHCND:USW00024216",  # Alturas (Modoc)
+    "north_san_joaquin_valley":   "GHCND:USW00023258",  # Modesto
+    "sacramento_valley":          "GHCND:USW00023232",  # Sacramento Executive
+    "southeast":                  "GHCND:USW00003144",  # El Centro / Imperial
 }
 
 

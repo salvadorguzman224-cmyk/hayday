@@ -11,7 +11,7 @@ import type { Meta, PriceSummary } from "@/lib/types";
 
 export default function DashboardPage() {
   const [filter, setFilter] = useState({
-    region: "san_joaquin_valley",
+    region: "central_san_joaquin_valley",
     hayType: "alfalfa",
     grade: "premium",
   });

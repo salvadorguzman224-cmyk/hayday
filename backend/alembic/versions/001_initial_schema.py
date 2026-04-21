@@ -15,8 +15,14 @@ depends_on = None
 
 
 def upgrade() -> None:
-    # Enable TimescaleDB if available (gracefully skip if not)
-    op.execute("CREATE EXTENSION IF NOT EXISTS timescaledb CASCADE")
+    # Enable TimescaleDB only if the extension is available (not present on Colab/plain PG)
+    op.execute("""
+        DO $$ BEGIN
+            IF EXISTS (SELECT 1 FROM pg_available_extensions WHERE name = 'timescaledb') THEN
+                CREATE EXTENSION IF NOT EXISTS timescaledb CASCADE;
+            END IF;
+        END $$
+    """)
 
     # --- hay_prices ---
     op.create_table(
@@ -37,14 +43,18 @@ def upgrade() -> None:
     op.create_index("ix_hay_prices_date_region", "hay_prices", ["report_date", "region"])
     op.create_index("ix_hay_prices_type", "hay_prices", ["hay_type", "grade"])
 
-    # Convert to TimescaleDB hypertable (gracefully skip if extension not available)
+    # Convert to TimescaleDB hypertable using a savepoint so a failure (e.g. on
+    # plain Postgres without TimescaleDB) rolls back only this statement and
+    # leaves the outer transaction alive for the remaining CREATE TABLEs.
+    op.execute("SAVEPOINT before_hypertable")
     try:
         op.execute(
             "SELECT create_hypertable('hay_prices', 'report_date', "
             "chunk_time_interval => INTERVAL '3 months', if_not_exists => TRUE)"
         )
+        op.execute("RELEASE SAVEPOINT before_hypertable")
     except Exception:
-        pass
+        op.execute("ROLLBACK TO SAVEPOINT before_hypertable")
 
     # --- weather_data ---
     op.create_table(

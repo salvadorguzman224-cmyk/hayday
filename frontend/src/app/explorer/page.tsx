@@ -8,7 +8,7 @@ import type { Meta, PricePoint } from "@/lib/types";
 
 export default function ExplorerPage() {
   const [filter, setFilter] = useState({
-    region: "san_joaquin_valley",
+    region: "central_san_joaquin_valley",
     hayType: "alfalfa",
     grade: "premium",
     weeks: "104",
