@@ -52,12 +52,15 @@ async def _load_supplemental(session, region: str) -> tuple[pd.DataFrame, pd.Dat
         .order_by(DroughtData.report_date)
     )
     drought_df = pd.DataFrame(drought.fetchall(), columns=["report_date", "d2_pct", "d3_pct", "d4_pct"])
+    for col in ["d2_pct", "d3_pct", "d4_pct"]:
+        drought_df[col] = pd.to_numeric(drought_df[col], errors="coerce")
 
     diesel = await session.execute(
         select(DieselPrice.report_date, DieselPrice.price_per_gallon)
         .order_by(DieselPrice.report_date)
     )
     diesel_df = pd.DataFrame(diesel.fetchall(), columns=["report_date", "price_per_gallon"])
+    diesel_df["price_per_gallon"] = pd.to_numeric(diesel_df["price_per_gallon"], errors="coerce")
 
     weather = await session.execute(
         select(WeatherData.observation_date, WeatherData.precipitation_mm, WeatherData.temp_max_c)
