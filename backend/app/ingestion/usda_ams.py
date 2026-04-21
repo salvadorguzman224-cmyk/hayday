@@ -20,7 +20,7 @@ from app.config import settings
 logger = logging.getLogger(__name__)
 
 BASE_URL = "https://marsapi.ams.usda.gov/services/v1.2"
-REPORT_SLUG = "LM_GR212"  # California Direct Hay — Weekly
+REPORT_SLUG = "2904"  # California Direct Hay Report (MARS slug_id)
 
 # Map USDA AMS LM_GR212 reporting-area strings to internal region keys.
 # Keys are matched case-insensitively via substring search (see _map_region),
