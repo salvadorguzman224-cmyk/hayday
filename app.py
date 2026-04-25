@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
 import joblib
+import math
 import json
 import os
 import hashlib
@@ -485,6 +486,116 @@ def calculate_freight(miles, volume_tons, diesel_price):
         "freight_per_ton": round(freight_per_ton, 2),
         "diesel_price":    diesel_price,
     }
+
+REGION_COORDS = {
+    "Southeast":                  (32.8478, -115.5631),
+    "Central San Joaquin Valley": (36.7468, -119.7726),
+    "North San Joaquin Valley":   (37.3382, -120.4830),
+    "Sacramento Valley":          (38.5816, -121.4944),
+    "North Inter-Mountains":      (41.1765, -121.9553),
+    "Colorado":                   (38.8339, -104.8214),
+    "Oregon":                     (44.9429, -123.0351),
+    "Idaho":                      (43.6150, -116.2023),
+    "Montana":                    (46.8797, -110.3626),
+}
+
+def haversine_miles(coord1, coord2):
+    lat1, lon1 = coord1
+    lat2, lon2 = coord2
+    R = 3958.8
+    phi1, phi2 = math.radians(lat1), math.radians(lat2)
+    dphi    = math.radians(lat2 - lat1)
+    dlambda = math.radians(lon2 - lon1)
+    a = math.sin(dphi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(dlambda / 2) ** 2
+    return round(2 * R * math.asin(math.sqrt(a)), 1)
+
+def get_region_coords_for_zip(zip_code, zip_to_region_map):
+    region = zip_to_region_map.get(zip_code)
+    if region and region in REGION_COORDS:
+        return REGION_COORDS[region]
+    return None
+
+def get_driving_distance_coords(origin_coords, delivery_zip, api_key):
+    try:
+        lat, lng = origin_coords
+        resp = _requests.get(
+            "https://maps.googleapis.com/maps/api/distancematrix/json",
+            params={
+                "origins":      f"{lat},{lng}",
+                "destinations": f"{delivery_zip}, CA, USA",
+                "units":        "imperial",
+                "key":          api_key,
+            },
+            timeout=10,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        if data.get("status") != "OK":
+            return {"miles": None, "valid": False}
+        element = data["rows"][0]["elements"][0]
+        if element.get("status") != "OK":
+            return {"miles": None, "valid": False}
+        return {"miles": round(element["distance"]["value"] * 0.000621371, 1), "valid": True}
+    except Exception:
+        return {"miles": None, "valid": False}
+
+def find_cheaper_sources(
+    delivery_zip, quoted_price, quoted_quality,
+    is_alfalfa, df_prices, diesel_price,
+    google_maps_key, zip_to_region_map, volume_tons,
+):
+    cutoff   = df_prices["date"].max() - pd.Timedelta(weeks=13)
+    recent   = df_prices[df_prices["date"] >= cutoff].copy()
+    if is_alfalfa and "is_alfalfa" in recent.columns:
+        recent = recent[recent["is_alfalfa"] == 1]
+    quality_data = recent[
+        recent["quality"].str.contains(quoted_quality, case=False, na=False)
+    ]
+    if len(quality_data) < 3:
+        quality_data = recent
+
+    region_prices = (
+        quality_data.groupby("region")["price_avg"]
+        .agg(avg_fob="mean", count="count")
+        .reset_index()
+    )
+    region_prices = region_prices[region_prices["count"] >= 3]
+
+    delivery_coords = get_region_coords_for_zip(delivery_zip, zip_to_region_map)
+
+    results = []
+    for _, row in region_prices.iterrows():
+        region  = row["region"]
+        avg_fob = round(float(row["avg_fob"]), 2)
+        if region not in REGION_COORDS:
+            continue
+        origin_coords = REGION_COORDS[region]
+        if google_maps_key:
+            dr = get_driving_distance_coords(origin_coords, delivery_zip, google_maps_key)
+            miles = dr["miles"] if dr["valid"] else None
+        else:
+            miles = haversine_miles(origin_coords, delivery_coords) if delivery_coords else None
+        if miles is None:
+            continue
+        fr = calculate_freight(miles, volume_tons, diesel_price)
+        if not fr["valid"]:
+            continue
+        delivered_est    = round(avg_fob + fr["freight_per_ton"], 2)
+        savings_per_ton  = round(quoted_price - delivered_est, 2)
+        if savings_per_ton <= 0:
+            continue
+        results.append({
+            "region":          region,
+            "avg_fob":         avg_fob,
+            "miles":           miles,
+            "freight_per_ton": fr["freight_per_ton"],
+            "delivered_est":   delivered_est,
+            "savings_per_ton": savings_per_ton,
+            "count":           int(row["count"]),
+        })
+
+    results.sort(key=lambda x: x["delivered_est"])
+    return results[:3]
 
 def log_quote_check(email, zip_code, region, quoted_price,
                     market_avg, verdict, volume):
@@ -1249,6 +1360,70 @@ if _freight_data:
 """, unsafe_allow_html=True)
 elif _freight_error:
     st.warning(f"Freight estimate unavailable: {_freight_error}")
+
+# ── Regional sourcing intelligence ────────────────────────
+if check and quoted_region:
+    _gmaps_key_s = st.secrets.get("GOOGLE_MAPS_API_KEY", "")
+    _diesel_s    = _freight_data["diesel"] if _freight_data else get_current_diesel()
+    _vol_s       = max(quoted_volume, 1)
+    with st.spinner("Finding better sources…"):
+        _sources = find_cheaper_sources(
+            zip_clean, quoted_price, quoted_quality,
+            is_alfalfa_input, df_prices, _diesel_s,
+            _gmaps_key_s, _zip_map, _vol_s,
+        )
+    if _sources:
+        st.markdown("""
+<div style="font-size:11px;font-weight:700;color:#8B7355;text-transform:uppercase;
+            letter-spacing:0.1em;margin:20px 0 10px;">
+  📦 Cheaper Sources Found
+</div>
+""", unsafe_allow_html=True)
+        for i, src in enumerate(_sources):
+            _medal   = ["🥇", "🥈", "🥉"][i]
+            _savings = src["savings_per_ton"]
+            _total_s = _savings * _vol_s if quoted_volume > 0 else None
+            _total_html = (
+                f'<span style="font-size:12px;color:#1A7A40;">'
+                f'Save ${_total_s:,.0f} total on {quoted_volume} tons</span>'
+            ) if _total_s and _total_s > 50 else ""
+            st.markdown(f"""
+<div style="background:#FFFFFF;border-radius:16px;padding:18px 22px;
+            box-shadow:0 2px 12px rgba(0,0,0,0.05);margin-bottom:10px;
+            border-left:4px solid #1A7A40;">
+  <div style="display:flex;justify-content:space-between;align-items:flex-start;
+              flex-wrap:wrap;gap:8px;">
+    <div>
+      <div style="font-size:16px;font-weight:800;color:#1C1C1E;">
+        {_medal} {src['region']}
+      </div>
+      <div style="font-size:12px;color:#8B7355;margin-top:2px;">
+        {src['miles']:.0f} mi · {src['count']} trades in last 13 weeks
+      </div>
+    </div>
+    <div style="text-align:right;">
+      <div style="font-size:22px;font-weight:800;color:#1A7A40;">
+        ${src['delivered_est']:.0f}/ton delivered
+      </div>
+      <div style="font-size:13px;font-weight:700;color:#1A7A40;">
+        Save ${_savings:.2f}/ton vs your quote
+      </div>
+      {_total_html}
+    </div>
+  </div>
+  <div style="display:flex;gap:16px;margin-top:12px;flex-wrap:wrap;">
+    <div style="font-size:12px;color:#6B6B6B;">
+      FOB avg <strong style="color:#1C1C1E;">${src['avg_fob']:.0f}</strong>
+    </div>
+    <div style="font-size:12px;color:#6B6B6B;">
+      + freight <strong style="color:#1C1C1E;">${src['freight_per_ton']:.2f}</strong>/ton
+    </div>
+    <div style="font-size:12px;color:#6B6B6B;">
+      = delivered <strong style="color:#1A7A40;">${src['delivered_est']:.0f}</strong>/ton
+    </div>
+  </div>
+</div>
+""", unsafe_allow_html=True)
 
 # ── Footer ────────────────────────────────────────────────
 st.markdown(f"""
