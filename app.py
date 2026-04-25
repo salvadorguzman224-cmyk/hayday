@@ -385,6 +385,107 @@ def track_unserved_zip(z):
             f"{url}/rest/v1/unserved_zips", headers=headers,
             json={"zip": z, "attempts": 1})
 
+# ── Freight helpers ───────────────────────────────────────
+
+def get_current_diesel():
+    try:
+        df = pd.read_csv("diesel_prices.csv")
+        df["date"] = pd.to_datetime(df["date"])
+        return float(df.sort_values("date", ascending=False).iloc[0]["diesel_price"])
+    except Exception:
+        return 4.50
+
+def update_diesel_price(api_key):
+    try:
+        resp = _requests.get(
+            "https://api.eia.gov/v2/petroleum/pri/gnd/data/",
+            params={
+                "api_key":              api_key,
+                "frequency":            "weekly",
+                "data[0]":              "value",
+                "facets[duoarea][]":    "R5XCA",
+                "facets[product][]":    "EPD2DXL0",
+                "sort[0][column]":      "period",
+                "sort[0][direction]":   "desc",
+                "length":               2,
+            },
+            timeout=10,
+        )
+        resp.raise_for_status()
+        records = resp.json()["response"]["data"]
+        if not records:
+            return get_current_diesel()
+
+        latest_date  = records[0]["period"]
+        latest_price = float(records[0]["value"])
+
+        try:
+            df = pd.read_csv("diesel_prices.csv")
+            df["date"] = pd.to_datetime(df["date"])
+            if latest_date not in df["date"].astype(str).values:
+                new_row = pd.DataFrame([{"date": latest_date, "diesel_price": latest_price,
+                                         "diesel_4w_avg": None, "diesel_13w_avg": None,
+                                         "diesel_wow_chg": None}])
+                df = pd.concat([df, new_row], ignore_index=True)
+                df.to_csv("diesel_prices.csv", index=False)
+        except Exception:
+            pass
+
+        return latest_price
+    except Exception:
+        return get_current_diesel()
+
+def get_driving_distance(origin_zip, delivery_zip, api_key):
+    try:
+        resp = _requests.get(
+            "https://maps.googleapis.com/maps/api/distancematrix/json",
+            params={
+                "origins":      f"{origin_zip}, CA, USA",
+                "destinations": f"{delivery_zip}, CA, USA",
+                "units":        "imperial",
+                "key":          api_key,
+            },
+            timeout=10,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        if data.get("status") != "OK":
+            return {"miles": None, "method": "error", "valid": False,
+                    "message": data.get("status", "API error")}
+        element = data["rows"][0]["elements"][0]
+        if element.get("status") != "OK":
+            return {"miles": None, "method": "error", "valid": False,
+                    "message": element.get("status", "Route not found")}
+        miles = round(element["distance"]["value"] * 0.000621371, 1)
+        return {
+            "miles":               miles,
+            "method":              "google_maps",
+            "valid":               True,
+            "origin_address":      data["origin_addresses"][0],
+            "destination_address": data["destination_addresses"][0],
+        }
+    except Exception as e:
+        return {"miles": None, "method": "error", "valid": False, "message": str(e)}
+
+def calculate_freight(miles, volume_tons, diesel_price):
+    if volume_tons <= 0:
+        return {"valid": False, "message": "Enter volume to calculate freight"}
+    if miles is None:
+        return {"valid": False, "message": "Could not calculate distance"}
+    base_total      = max(600.00, miles * 5.00)
+    fuel_surcharge  = max(0, round((diesel_price - 3.50) * 0.15 * miles, 2))
+    total_freight   = base_total + fuel_surcharge
+    freight_per_ton = total_freight / volume_tons
+    return {
+        "valid":           True,
+        "miles":           miles,
+        "base_total":      round(base_total, 2),
+        "fuel_surcharge":  fuel_surcharge,
+        "total_freight":   round(total_freight, 2),
+        "freight_per_ton": round(freight_per_ton, 2),
+        "diesel_price":    diesel_price,
+    }
+
 def log_quote_check(email, zip_code, region, quoted_price,
                     market_avg, verdict, volume):
     url, headers = _sb()
