@@ -558,10 +558,18 @@ with col1:
         min_value=50, max_value=800,
         value=180, step=5,
     )
-with col2:
+
+colz1, colz2 = st.columns(2)
+with colz1:
     zip_input = st.text_input(
-        "Your zip code",
+        "Delivery zip (your location)",
         placeholder="e.g. 93706",
+        max_chars=5,
+    )
+with colz2:
+    origin_zip_input = st.text_input(
+        "Origin zip (where hay ships from)",
+        placeholder="e.g. 95376",
         max_chars=5,
     )
 
@@ -573,6 +581,7 @@ if os.path.exists("zip_to_region.json"):
         _zip_map = _json.load(_zf)
 
 zip_clean          = zip_input.strip() if zip_input else ""
+origin_zip_clean   = origin_zip_input.strip() if origin_zip_input else ""
 auto_region        = _zip_map.get(zip_clean, None)
 quoted_region      = None
 zip_not_in_service = False
