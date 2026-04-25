@@ -778,591 +778,371 @@ with col_o:
         st.session_state.user_name  = ""
         st.rerun()
 
-# ── Input form ────────────────────────────────────────────
-st.markdown('<div class="input-card">', unsafe_allow_html=True)
 
-# SECTION A — What are you buying?
+# ── Mobile-first overrides ────────────────────────────────
+st.markdown("""
+<style>
+.main .block-container { max-width: 460px !important; padding-top: 1rem; }
+.stButton > button {
+    min-height: 52px; font-size: 16px; border-radius: 14px;
+    font-weight: 700; font-family: 'Nunito Sans', sans-serif;
+}
+.stButton > button[kind="primary"] {
+    background: #C17F3E !important; border-color: #C17F3E !important;
+    color: #FFFFFF !important;
+}
+.stNumberInput input, .stTextInput input {
+    min-height: 48px; font-size: 16px; border-radius: 12px;
+}
+div[data-baseweb="input"] { border-radius: 12px; }
+</style>
+""", unsafe_allow_html=True)
+
+# ── Quote-checker step state ──────────────────────────────
+_qc_defaults = {
+    "qc_step":     1,
+    "qc_quality":  None,
+    "qc_alfalfa":  True,
+    "qc_bales":    512,
+    "qc_lbs":      88,
+    "qc_fob":      215.0,
+    "qc_freight":  1900.0,
+    "qc_unloading":0.0,
+    "qc_zip":      "",
+    "qc_logged":   False,
+}
+for _k, _v in _qc_defaults.items():
+    if _k not in st.session_state:
+        st.session_state[_k] = _v
+
+def qc_restart():
+    for k in list(_qc_defaults.keys()):
+        st.session_state[k] = _qc_defaults[k]
+
+# Progress dots
+_total_steps = 4
+_current     = st.session_state.qc_step
+_dots = "".join(
+    f'<span style="display:inline-block;width:10px;height:10px;border-radius:50%;'
+    f'margin:0 5px;background:{("#C17F3E" if i <= _current else "#E5DDD0")};"></span>'
+    for i in range(1, _total_steps + 1)
+)
 st.markdown(
-    '<div style="font-size:11px;font-weight:700;color:#8B7355;'
-    'text-transform:uppercase;letter-spacing:0.1em;margin-bottom:8px;">'
-    'A · What are you buying?</div>',
+    f'<div style="text-align:center;margin:6px 0 18px;">{_dots}'
+    f'<div style="font-size:11px;color:#8B7355;text-transform:uppercase;'
+    f'letter-spacing:0.15em;margin-top:8px;font-weight:700;">'
+    f'Step {_current} of {_total_steps}</div></div>',
     unsafe_allow_html=True,
 )
-colA1, colA2 = st.columns(2)
-with colA1:
-    quoted_quality = st.selectbox("Quality grade", options=QUALITIES, index=1)
-with colA2:
-    cutting = st.selectbox(
-        "Cutting (optional)",
-        options=["Unknown", "1st", "2nd", "3rd", "4th"], index=0,
-    )
-is_alfalfa_input = st.checkbox("🌿  Pure Alfalfa", value=True)
 
-# SECTION B — Volume
-st.markdown(
-    '<div style="font-size:11px;font-weight:700;color:#8B7355;'
-    'text-transform:uppercase;letter-spacing:0.1em;margin:14px 0 8px;">'
-    'B · Volume</div>',
-    unsafe_allow_html=True,
-)
-volume_type = st.radio(
-    "Volume type", ["Tons", "Bales"], horizontal=True, label_visibility="collapsed",
-)
-if volume_type == "Tons":
-    volume_tons  = float(st.number_input(
-        "Volume (tons)", min_value=1.0, max_value=1000.0, value=22.0, step=0.5,
-    ))
-    bale_count   = 0
-    lbs_per_bale = 0
-else:
-    colB1, colB2 = st.columns(2)
-    with colB1:
-        bale_count = int(st.number_input(
-            "Number of bales", min_value=1, max_value=10000, value=512, step=1,
-        ))
-    with colB2:
-        lbs_per_bale = int(st.number_input(
-            "Lbs per bale", min_value=50, max_value=150, value=88, step=1,
-        ))
-    volume_tons = (bale_count * lbs_per_bale) / 2000
+# ── STEP 1 — Grade ────────────────────────────────────────
+if st.session_state.qc_step == 1:
     st.markdown(
-        f'<div style="font-size:13px;color:#8B7355;margin-top:-4px;">'
-        f'{bale_count} bales × {lbs_per_bale} lbs = '
-        f'<strong>{volume_tons:.2f} tons</strong></div>',
+        '<div style="font-family:Nunito,sans-serif;font-size:22px;font-weight:800;'
+        'color:#1C1C1E;margin-bottom:6px;">What grade are you buying?</div>'
+        '<div style="font-size:14px;color:#8B7355;margin-bottom:18px;">'
+        'Tap to select. Toggle alfalfa first if needed.</div>',
         unsafe_allow_html=True,
     )
 
-# SECTION C — Price
-st.markdown(
-    '<div style="font-size:11px;font-weight:700;color:#8B7355;'
-    'text-transform:uppercase;letter-spacing:0.1em;margin:14px 0 8px;">'
-    'C · Price</div>',
-    unsafe_allow_html=True,
-)
-price_type = st.radio(
-    "Price type",
-    ["FOB (at origin)", "Delivered (includes freight)"],
-    horizontal=True, label_visibility="collapsed",
-)
-if price_type == "FOB (at origin)":
-    fob_price_input       = float(st.number_input(
-        "FOB price ($/ton)", min_value=50.0, max_value=800.0, value=215.0, step=5.0,
-    ))
-    delivered_price_input = 0.0
-else:
-    delivered_price_input = float(st.number_input(
-        "Delivered price ($/ton)", min_value=50.0, max_value=800.0, value=280.0, step=5.0,
-    ))
-    fob_price_input       = 0.0
-
-# SECTION D — Location
-st.markdown(
-    '<div style="font-size:11px;font-weight:700;color:#8B7355;'
-    'text-transform:uppercase;letter-spacing:0.1em;margin:14px 0 8px;">'
-    'D · Location</div>',
-    unsafe_allow_html=True,
-)
-colz1, colz2 = st.columns(2)
-with colz1:
-    zip_input = st.text_input(
-        "Delivery zip (your location)", placeholder="e.g. 93706", max_chars=5,
-    )
-with colz2:
-    origin_zip_input = st.text_input(
-        "Origin zip (where hay ships from)", placeholder="e.g. 95376", max_chars=5,
+    st.session_state.qc_alfalfa = st.toggle(
+        "🌿  Pure Alfalfa", value=st.session_state.qc_alfalfa,
     )
 
-# Zip → region
-import json as _json
-_zip_map = {}
-if os.path.exists("zip_to_region.json"):
-    with open("zip_to_region.json") as _zf:
-        _zip_map = _json.load(_zf)
+    st.markdown(
+        '<div style="margin-top:18px;font-size:11px;color:#8B7355;'
+        'text-transform:uppercase;font-weight:700;letter-spacing:0.1em;'
+        'margin-bottom:10px;">Quality grade</div>',
+        unsafe_allow_html=True,
+    )
 
-zip_clean          = zip_input.strip() if zip_input else ""
-origin_zip_clean   = origin_zip_input.strip() if origin_zip_input else ""
-auto_region        = _zip_map.get(zip_clean, None)
-quoted_region      = None
-zip_not_in_service = False
+    for _q in QUALITIES:
+        if st.button(_q, key=f"qc_grade_{_q}", use_container_width=True):
+            st.session_state.qc_quality = _q
+            st.session_state.qc_step    = 2
+            st.session_state.qc_logged  = False
+            st.rerun()
 
-if zip_clean and len(zip_clean) == 5 and zip_clean.isdigit():
-    if auto_region:
-        quoted_region = auto_region
-        st.markdown(f"""
-        <div style="background:#F0FAF4;border:1.5px solid #B8E6C8;
-                    border-radius:10px;padding:10px 14px;
-                    margin-top:-4px;margin-bottom:8px;
-                    font-size:13px;color:#1A7A40;">
-          📍 <strong>{auto_region}</strong>
-        </div>
-        """, unsafe_allow_html=True)
-    else:
-        zip_not_in_service = True
-        track_unserved_zip(zip_clean)
-elif zip_clean and len(zip_clean) < 5:
-    st.markdown("""
-    <div style="background:#FFFBF0;border:1.5px solid #FFE9A0;
-                border-radius:10px;padding:8px 14px;
-                margin-top:-4px;font-size:13px;color:#B07D00;">
-      Keep typing...
-    </div>
-    """, unsafe_allow_html=True)
+# ── STEP 2 — Volume ───────────────────────────────────────
+elif st.session_state.qc_step == 2:
+    st.markdown(
+        '<div style="font-family:Nunito,sans-serif;font-size:22px;font-weight:800;'
+        'color:#1C1C1E;margin-bottom:6px;">How many bales?</div>'
+        '<div style="font-size:14px;color:#8B7355;margin-bottom:18px;">'
+        'Bale count and weight per bale.</div>',
+        unsafe_allow_html=True,
+    )
 
-# SECTION E — Actual costs (optional)
-st.markdown(
-    '<div style="font-size:11px;font-weight:700;color:#8B7355;'
-    'text-transform:uppercase;letter-spacing:0.1em;margin:14px 0 8px;">'
-    'E · Actual costs (optional)</div>',
-    unsafe_allow_html=True,
-)
-colE1, colE2, colE3 = st.columns(3)
-with colE1:
-    actual_freight = float(st.number_input(
-        "Freight ($)", min_value=0.0, max_value=20000.0, value=0.0, step=50.0,
-        placeholder="e.g. 1900",
-        help="Enter your carrier's actual quote — more accurate than our estimate",
-    ))
-with colE2:
-    unloading = float(st.number_input(
-        "Unloading ($)", min_value=0.0, max_value=5000.0, value=0.0, step=10.0,
-        placeholder="e.g. 120",
-    ))
-with colE3:
-    other_fees = float(st.number_input(
-        "Other fees ($)", min_value=0.0, max_value=5000.0, value=0.0, step=10.0,
-        placeholder="tarps, surcharge",
-    ))
+    _bales = st.number_input(
+        "Number of bales",
+        min_value=1, max_value=10000,
+        value=int(st.session_state.qc_bales), step=1,
+    )
+    _lbs = st.number_input(
+        "Lbs per bale",
+        min_value=50, max_value=150,
+        value=int(st.session_state.qc_lbs), step=1,
+    )
+    _tons = (_bales * _lbs) / 2000
 
-# Compatibility shims for downstream code
-is_delivered_input = False
-quoted_volume      = volume_tons
-quoted_price       = fob_price_input if price_type == "FOB (at origin)" else delivered_price_input
-
-check = st.button("Check My Quote →", use_container_width=True)
-st.markdown('</div>', unsafe_allow_html=True)
-
-if check:
-    log_check(st.session_state.user_email)
-
-# ── Not in service ────────────────────────────────────────
-if check and zip_not_in_service:
     st.markdown(f"""
-    <div style="background:#FFFFFF;border-radius:20px;padding:32px;
-                box-shadow:0 2px 20px rgba(0,0,0,0.06);
-                text-align:center;margin-top:8px;">
-      <div style="font-size:40px;margin-bottom:16px;">🌾</div>
-      <div style="font-family:'Nunito',sans-serif;font-size:20px;
-                  font-weight:700;color:#1C1C1E;margin-bottom:10px;">
-        Not in our coverage area yet
-      </div>
-      <div style="font-size:15px;color:#6B6B6B;line-height:1.7;
-                  max-width:380px;margin:0 auto 20px;">
-        Zip code <strong>{zip_clean}</strong> isn't in our service area yet.
-        We're expanding rapidly across Western states and will notify you
-        as soon as your area is covered.
-      </div>
-      <div style="background:#F5F0E8;border-radius:12px;padding:16px;
-                  max-width:320px;margin:0 auto;">
-        <div style="font-size:12px;font-weight:700;color:#8B7355;
-                    text-transform:uppercase;letter-spacing:0.08em;
-                    margin-bottom:8px;">
-          Get notified when we expand
-        </div>
-        <div style="font-size:13px;color:#3C3C3E;">
-          We've saved your zip code. We'll email
-          <strong>{st.session_state.user_email}</strong>
-          when your area goes live.
-        </div>
-      </div>
-    </div>
-    """, unsafe_allow_html=True)
-    st.stop()
+<div style="background:#FFFFFF;border-radius:18px;padding:20px;margin:14px 0;
+            text-align:center;box-shadow:0 2px 14px rgba(0,0,0,0.05);">
+  <div style="font-size:11px;color:#8B7355;text-transform:uppercase;
+              font-weight:700;letter-spacing:0.1em;">Total Volume</div>
+  <div style="font-size:34px;font-weight:800;color:#C17F3E;margin-top:6px;
+              line-height:1;">{_tons:.2f} tons</div>
+  <div style="font-size:13px;color:#8B7355;margin-top:6px;">
+    {_bales} bales × {_lbs} lbs
+  </div>
+</div>
+""", unsafe_allow_html=True)
 
-if check and not zip_clean:
-    st.warning("Please enter your zip code to check your quote.")
-    st.stop()
+    cb1, cb2 = st.columns(2)
+    with cb1:
+        if st.button("← Back", key="qc_back_2", use_container_width=True):
+            st.session_state.qc_step = 1
+            st.rerun()
+    with cb2:
+        if st.button("Next →", key="qc_next_2", use_container_width=True, type="primary"):
+            st.session_state.qc_bales = int(_bales)
+            st.session_state.qc_lbs   = int(_lbs)
+            st.session_state.qc_step  = 3
+            st.rerun()
 
-if check and quoted_region is None and not zip_not_in_service:
-    st.warning("Please enter a valid 5-digit zip code.")
-    st.stop()
-
-# ── Market comparison ─────────────────────────────────────
-MIN_RECORDS = 3
-
-def calc_stats(data):
-    return (
-        data["price_avg"].mean(),
-        data["price_avg"].min(),
-        data["price_avg"].max(),
-        len(data),
+# ── STEP 3 — Price & costs ────────────────────────────────
+elif st.session_state.qc_step == 3:
+    st.markdown(
+        '<div style="font-family:Nunito,sans-serif;font-size:22px;font-weight:800;'
+        'color:#1C1C1E;margin-bottom:6px;">Price & freight</div>'
+        '<div style="font-size:14px;color:#8B7355;margin-bottom:18px;">'
+        'FOB price, your actual freight, and where it\'s going.</div>',
+        unsafe_allow_html=True,
     )
 
-def get_market_comparison(df, quoted_region, quoted_quality,
-                          is_alfalfa, is_delivered):
-    ca_data = df[df["state"] == "California"].copy()
-
-    def apply_filters(data, weeks):
-        cutoff = data["date"].max() - pd.Timedelta(weeks=weeks)
-        result = data[data["date"] >= cutoff].copy()
-        if is_alfalfa and "is_alfalfa" in result.columns:
-            sub = result[result["is_alfalfa"] == 1]
-            if len(sub) >= MIN_RECORDS: result = sub
-        if is_delivered and "is_delivered" in result.columns:
-            sub = result[result["is_delivered"] == 1]
-            if len(sub) >= MIN_RECORDS: result = sub
-        return result
-
-    def stats_dict(data, label, time_label):
-        return {
-            "market_avg":  round(data["price_avg"].mean(), 1),
-            "market_lo":   round(data["price_avg"].min(),  1),
-            "market_hi":   round(data["price_avg"].max(),  1),
-            "n_trades":    len(data),
-            "data_label":  label,
-            "time_label":  time_label,
-        }
-
-    # Steps 1-4: same quality + same region, expanding time window
-    for weeks in [4, 8, 13, 26]:
-        base  = apply_filters(ca_data[ca_data["region"] == quoted_region], weeks)
-        qdata = filter_by_quality(base, quoted_quality)
-        if len(qdata) >= MIN_RECORDS:
-            return stats_dict(
-                qdata,
-                f"{quoted_quality} · {quoted_region}",
-                f"last {weeks} weeks",
-            )
-
-    # Step 5: all grades + same region + 13 weeks
-    base = apply_filters(ca_data[ca_data["region"] == quoted_region], 13)
-    if len(base) >= MIN_RECORDS:
-        return stats_dict(
-            base,
-            f"{quoted_region} · all grades",
-            "last 13 weeks — grade data limited",
-        )
-
-    # Step 6: same quality + all valid CA regions + 13 weeks
-    base  = apply_filters(ca_data[ca_data["region"].isin(CA_VALID_REGIONS)], 13)
-    qdata = filter_by_quality(base, quoted_quality)
-    if len(qdata) >= MIN_RECORDS:
-        return stats_dict(
-            qdata,
-            f"{quoted_quality} · CA regional avg",
-            "last 13 weeks — limited local data",
-        )
-
-    # Step 7: all grades + all valid CA regions + 13 weeks
-    base = apply_filters(ca_data[ca_data["region"].isin(CA_VALID_REGIONS)], 13)
-    if len(base) >= MIN_RECORDS:
-        return stats_dict(
-            base,
-            "CA regional avg · all grades",
-            "last 13 weeks — limited local data",
-        )
-
-    return None
-
-_mc_result = get_market_comparison(
-    df_prices, quoted_region, quoted_quality,
-    is_alfalfa_input, is_delivered_input,
-)
-
-if _mc_result is None:
-    st.warning("Not enough market data for this region yet.")
-    st.stop()
-
-market_avg = _mc_result["market_avg"]
-market_lo  = _mc_result["market_lo"]
-market_hi  = _mc_result["market_hi"]
-n_trades   = _mc_result["n_trades"]
-data_label = _mc_result["data_label"]
-time_label = _mc_result["time_label"]
-diff       = quoted_price - market_avg
-diff_pct   = diff / market_avg * 100
-pct_rank   = max(0, min(100,
-    (quoted_price - market_lo) / (market_hi - market_lo) * 100
-    if market_hi > market_lo else 50
-))
-
-SEASONAL_CONTEXT = {
-    1:  "January prices are typically elevated — winter stocks running low",
-    2:  "February is historically the highest-price month of the year",
-    3:  "March prices begin declining as first cutting approaches",
-    4:  "April — first cutting imminent, prices softening",
-    5:  "May — first cutting harvest, maximum supply, lowest prices",
-    6:  "June — peak supply month, best time to buy",
-    7:  "July prices rise as summer heat stresses second cutting",
-    8:  "August — second cutting complete, prices stabilizing",
-    9:  "September — third cutting underway, good supply available",
-    10: "October prices begin rising as winter stocks build",
-    11: "November — pre-winter buying season, prices climbing",
-    12: "December — winter premium in effect, lock in supply now",
-}
-seasonal_note = SEASONAL_CONTEXT.get(datetime.now().month, "")
-
-# ── Early freight calculation ──────────────────────────────
-freight_valid   = False
-freight_per_ton = 0.0
-fob_equivalent  = float(quoted_price)
-distance_miles  = None
-_freight_data   = None
-_freight_error  = None
-
-if (check
-        and origin_zip_clean
-        and len(origin_zip_clean) == 5
-        and origin_zip_clean.isdigit()):
-    _gmaps_key = st.secrets.get("GOOGLE_MAPS_API_KEY", "")
-    _diesel    = get_current_diesel()
-    if _gmaps_key:
-        with st.spinner("Calculating freight distance…"):
-            _dist_r = get_driving_distance(origin_zip_clean, zip_clean, _gmaps_key)
-    else:
-        _dist_r = {"valid": False, "message": "Google Maps API key not configured"}
-    if _dist_r["valid"]:
-        _fr_r = calculate_freight(_dist_r["miles"], quoted_volume, _diesel)
-        if _fr_r["valid"]:
-            freight_valid   = True
-            freight_per_ton = _fr_r["freight_per_ton"]
-            fob_equivalent  = round(quoted_price - freight_per_ton, 2)
-            distance_miles  = _dist_r["miles"]
-            _freight_data   = {"dist": _dist_r, "freight": _fr_r, "diesel": _diesel}
-        else:
-            _freight_error = _fr_r.get("message", "Unknown error")
-    else:
-        _freight_error = _dist_r.get("message", "Unknown error")
-
-# ── Cost computation ──────────────────────────────────────
-_freight_estimate_total = (
-    _freight_data["freight"]["total_freight"] if _freight_data else 0.0
-)
-freight_total   = actual_freight if actual_freight > 0 else _freight_estimate_total
-freight_per_ton = (freight_total / volume_tons) if volume_tons > 0 else 0.0
-
-if price_type == "FOB (at origin)":
-    fob_price = fob_price_input
-else:
-    fob_price = delivered_price_input - freight_per_ton
-
-quoted_price    = fob_price
-fob_equivalent  = fob_price
-total_other     = unloading + other_fees
-hay_cost        = fob_price * volume_tons
-total_cost      = hay_cost + freight_total + total_other
-landed_per_ton  = total_cost / volume_tons if volume_tons > 0 else 0.0
-landed_per_bale = (total_cost / bale_count) if bale_count > 0 else 0.0
-unloading_per_ton = unloading / volume_tons if volume_tons > 0 else 0.0
-other_per_ton     = other_fees / volume_tons if volume_tons > 0 else 0.0
-full_load_freight_per_ton = freight_total / 40.0 if freight_total > 0 else 0.0
-
-market_baseline = market_avg + full_load_freight_per_ton
-landed_diff     = landed_per_ton - market_baseline
-landed_diff_pct = (landed_diff / market_baseline * 100) if market_baseline else 0.0
-
-# ── Forecast ──────────────────────────────────────────────
-forecast_avg = market_avg
-forecast_dir = 0
-if model_pkg and quoted_region:
-    try:
-        model    = model_pkg["model"]
-        features = model_pkg["features"]
-        encoders = model_pkg["encoders"]
-        r_df     = df_prices[
-            (df_prices["state"]  == "California") &
-            (df_prices["region"] == quoted_region)
-        ].sort_values("date")
-        prices  = r_df["price_avg"].values
-        df_nass = pd.read_csv("nass_supply_data.csv")
-        nass_row = df_nass.sort_values("year").iloc[[-1]]
-        fdate   = pd.Timestamp.now() + pd.Timedelta(days=7)
-        m, w, q = fdate.month, fdate.isocalendar()[1], (fdate.month-1)//3+1
-        lag_4w  = float(np.mean(prices[-2:])) if len(prices)>=2 else float(prices[-1])
-        lag_13w = float(np.mean(prices[-6:])) if len(prices)>=6 else lag_4w
-        lag_26w = float(np.mean(prices[-13:])) if len(prices)>=13 else lag_13w
-        def enc(name, val):
-            le = encoders[name]
-            v  = val if val in le.classes_ else le.classes_[0]
-            return int(le.transform([v])[0])
-        feat_row = {
-            "month_sin": np.sin(2*np.pi*m/12),
-            "month_cos": np.cos(2*np.pi*m/12),
-            "week_sin":  np.sin(2*np.pi*w/52),
-            "week_cos":  np.cos(2*np.pi*w/52),
-            "quarter":   q,
-            "region_enc":    enc("region", quoted_region),
-            "quality_enc":   enc("quality", quoted_quality),
-            "commodity_enc": enc("commodity", "ALFALFA HAY"),
-            "lag_4w":    lag_4w,
-            "lag_13w":   lag_13w,
-            "lag_26w":   lag_26w,
-            "roll_4w_mean":  lag_4w,
-            "roll_13w_mean": lag_13w,
-            "production_tons":     float(nass_row["production_tons"].values[0]),
-            "acres_harvested":     float(nass_row["acres_harvested"].values[0]),
-            "yield_tons_per_acre": float(nass_row["yield_tons_per_acre"].values[0]),
-            "alfalfa_share":       float(nass_row["alfalfa_share"].values[0]),
-        }
-        X = np.array([[feat_row.get(f, 0) for f in features]])
-        forecast_avg = float(np.clip(model.predict(X)[0], 50, 800))
-        forecast_dir = forecast_avg - market_avg
-    except:
-        pass
-
-# ── Verdict ───────────────────────────────────────────────
-# Primary diff drives title/colors — landed cost vs market+full-load freight
-if landed_diff_pct > 10:
-    title   = "Overpriced"
-    action  = "Negotiate or Walk Away"
-    bg      = "#FFF2F0"; border = "#FFD5CC"; color = "#C0392B"; pill_bg = "#C0392B"
-elif landed_diff_pct > 5:
-    title   = "Slightly High"
-    action  = "Try to Negotiate"
-    bg      = "#FFFBF0"; border = "#FFE9A0"; color = "#B07D00"; pill_bg = "#C17F3E"
-elif landed_diff_pct >= -5:
-    title   = "Fair Price"
-    action  = "Buy Now" if forecast_dir > 8 else "Good to Go"
-    bg      = "#F0FAF4"; border = "#B8E6C8"; color = "#1A7A40"; pill_bg = "#1A7A40"
-else:
-    title   = "Below Market"
-    action  = "Buy Now"
-    bg      = "#F0FAF4"; border = "#B8E6C8"; color = "#1A7A40"; pill_bg = "#1A7A40"
-
-_ls = "above" if landed_diff >= 0 else "below"
-body = (
-    f"Your landed cost of <strong>${landed_per_ton:.2f}/ton</strong> is "
-    f"<strong>${abs(landed_diff):.2f} ({abs(landed_diff_pct):.1f}%) {_ls}</strong> "
-    f"the market estimate of <strong>${market_baseline:.2f}/ton</strong> "
-    f"(regional FOB ${market_avg:.0f} + full-load freight ${full_load_freight_per_ton:.2f})."
-)
-
-freight_ctx = ""
-if freight_total > 0 and quoted_price > 0:
-    _fp_pct = freight_per_ton / quoted_price * 100
-    freight_ctx = (
-        f"<br><br>🚛 Freight (${freight_per_ton:.2f}/ton) is "
-        f"<strong>{_fp_pct:.0f}%</strong> of your FOB price."
+    _fob = st.number_input(
+        "FOB price ($/ton)",
+        min_value=50.0, max_value=800.0,
+        value=float(st.session_state.qc_fob), step=5.0,
+    )
+    _freight = st.number_input(
+        "Actual freight total ($)",
+        min_value=0.0, max_value=20000.0,
+        value=float(st.session_state.qc_freight), step=50.0,
+        help="Your carrier's actual quote — total dollars for the load",
+    )
+    _unl = st.number_input(
+        "Unloading ($) — optional",
+        min_value=0.0, max_value=5000.0,
+        value=float(st.session_state.qc_unloading), step=10.0,
+    )
+    _zip = st.text_input(
+        "Delivery zip (5 digits)",
+        value=st.session_state.qc_zip, max_chars=5,
+        placeholder="e.g. 93706",
     )
 
-no_freight_disclaimer = (
-    '<br><br><span style="color:#B07D00;">⚠️ Add origin zip for '
-    'freight-adjusted comparison</span>'
-    if not origin_zip_clean else ""
-)
+    cb1, cb2 = st.columns(2)
+    with cb1:
+        if st.button("← Back", key="qc_back_3", use_container_width=True):
+            st.session_state.qc_step = 2
+            st.rerun()
+    with cb2:
+        if st.button("Check It →", key="qc_check", use_container_width=True, type="primary"):
+            st.session_state.qc_fob       = float(_fob)
+            st.session_state.qc_freight   = float(_freight)
+            st.session_state.qc_unloading = float(_unl)
+            st.session_state.qc_zip       = _zip.strip() if _zip else ""
+            st.session_state.qc_step      = 4
+            st.session_state.qc_logged    = False
+            log_check(st.session_state.user_email)
+            st.rerun()
 
-vol_note = ""
-if volume_tons > 0 and abs(landed_diff) * volume_tons > 50:
-    _vsavings = -landed_diff * volume_tons
-    if _vsavings > 0:
-        vol_note = (
-            f"<br><br>At {volume_tons:.2f} tons you save "
-            f"<strong>${_vsavings:,.0f}</strong> vs market."
-        )
+# ── STEP 4 — Results ──────────────────────────────────────
+elif st.session_state.qc_step == 4:
+    quoted_quality   = st.session_state.qc_quality
+    is_alfalfa_input = st.session_state.qc_alfalfa
+    bale_count       = st.session_state.qc_bales
+    lbs_per_bale     = st.session_state.qc_lbs
+    fob_price        = st.session_state.qc_fob
+    freight_total    = st.session_state.qc_freight
+    unloading        = st.session_state.qc_unloading
+    zip_clean        = st.session_state.qc_zip
+
+    volume_tons = (bale_count * lbs_per_bale) / 2000
+
+    # Validate zip
+    if not zip_clean or len(zip_clean) != 5 or not zip_clean.isdigit():
+        st.warning("We need a valid 5-digit delivery zip to check your quote.")
+        if st.button("← Back to fix", use_container_width=True):
+            st.session_state.qc_step = 3
+            st.rerun()
+        st.stop()
+
+    # Zip → region
+    import json as _json
+    _zip_map = {}
+    if os.path.exists("zip_to_region.json"):
+        with open("zip_to_region.json") as _zf:
+            _zip_map = _json.load(_zf)
+    quoted_region = _zip_map.get(zip_clean, None)
+
+    if not quoted_region:
+        track_unserved_zip(zip_clean)
+        st.markdown(f"""
+<div style="background:#FFFFFF;border-radius:20px;padding:28px 24px;text-align:center;
+            box-shadow:0 2px 14px rgba(0,0,0,0.06);">
+  <div style="font-size:36px;margin-bottom:10px;">🌾</div>
+  <div style="font-family:Nunito,sans-serif;font-size:18px;font-weight:800;
+              color:#1C1C1E;margin-bottom:8px;">
+    Not in coverage yet
+  </div>
+  <div style="font-size:14px;color:#6B6B6B;line-height:1.6;">
+    Zip <strong>{zip_clean}</strong> isn't in our area yet. We've saved it
+    and will email <strong>{st.session_state.user_email}</strong> when we expand.
+  </div>
+</div>
+""", unsafe_allow_html=True)
+        if st.button("Try another zip", use_container_width=True):
+            st.session_state.qc_step = 3
+            st.rerun()
+        st.stop()
+
+    # Market comparison (FOB market)
+    _mc = get_market_comparison(
+        df_prices, quoted_region, quoted_quality, is_alfalfa_input, False,
+    )
+    if _mc is None:
+        st.warning("Not enough market data for this region yet.")
+        if st.button("Start Over", use_container_width=True):
+            qc_restart()
+            st.rerun()
+        st.stop()
+
+    market_avg = _mc["market_avg"]
+    market_lo  = _mc["market_lo"]
+    market_hi  = _mc["market_hi"]
+    n_trades   = _mc["n_trades"]
+    data_label = _mc["data_label"]
+    time_label = _mc["time_label"]
+
+    # Cost computation
+    freight_per_ton           = freight_total / volume_tons if volume_tons > 0 else 0.0
+    full_load_freight_per_ton = freight_total / 40.0       if freight_total > 0 else 0.0
+    hay_cost                  = fob_price * volume_tons
+    total_cost                = hay_cost + freight_total + unloading
+    landed_per_ton            = total_cost / volume_tons   if volume_tons > 0 else 0.0
+    landed_per_bale           = total_cost / bale_count    if bale_count   > 0 else 0.0
+    market_baseline           = market_avg + full_load_freight_per_ton
+    landed_diff               = landed_per_ton - market_baseline
+    landed_diff_pct           = (landed_diff / market_baseline * 100) if market_baseline else 0.0
+
+    # Verdict
+    if landed_diff_pct > 10:
+        title  = "Overpriced"
+        action = "Negotiate or Walk Away"
+        bg     = "#FFF2F0"; border = "#FFD5CC"; color = "#C0392B"
+    elif landed_diff_pct > 5:
+        title  = "Slightly High"
+        action = "Try to Negotiate"
+        bg     = "#FFFBF0"; border = "#FFE9A0"; color = "#B07D00"
+    elif landed_diff_pct >= -5:
+        title  = "Fair Price"
+        action = "Good to Go"
+        bg     = "#F0FAF4"; border = "#B8E6C8"; color = "#1A7A40"
     else:
-        vol_note = (
-            f"<br><br>At {volume_tons:.2f} tons you overpay "
-            f"<strong>${abs(_vsavings):,.0f}</strong> vs market."
-        )
+        title  = "Below Market"
+        action = "Buy Now"
+        bg     = "#F0FAF4"; border = "#B8E6C8"; color = "#1A7A40"
 
-seasonal_html = (
-    f'<div style="margin-top:12px;font-size:12px;color:#8B7355;font-style:italic;">'
-    f'{seasonal_note}</div>'
-) if seasonal_note else ""
+    total_savings = -landed_diff * volume_tons
+    if total_savings > 1:
+        savings_label = f"Save <strong>${total_savings:,.0f}</strong> total"
+    elif abs(total_savings) > 1:
+        savings_label = f"Overpay <strong>${abs(total_savings):,.0f}</strong> total"
+    else:
+        savings_label = ""
 
-limited_data_html = (
-    f'<div style="margin-top:10px;background:#F5F0E8;border-radius:8px;'
-    f'padding:8px 12px;font-size:12px;color:#8B7355;">'
-    f'⚠️ Limited recent data for this region — comparison based on '
-    f'{n_trades} transactions over a wider time window. '
-    f'Check back weekly as new USDA data is added.</div>'
-) if "limited" in time_label.lower() else ""
-
-if forecast_dir > 8:
-    fc_bg="#FFF8F0"; fc_border="#FFD9A8"; fc_color="#A06010"
-    fc_text=f"📈 Prices forecast to <strong>rise ~${forecast_dir:.0f}/ton</strong> next 7 days. If this quote is fair, consider locking it in."
-elif forecast_dir < -8:
-    fc_bg="#F0FAF4"; fc_border="#B8E6C8"; fc_color="#1A5C30"
-    fc_text=f"📉 Prices forecast to <strong>drop ~${abs(forecast_dir):.0f}/ton</strong> next 7 days. Waiting may get you a better deal."
-else:
-    fc_bg="#F8F6F2"; fc_border="#E5DDD0"; fc_color="#6B6B6B"
-    fc_text=f"→ Prices in {quoted_region} look stable over the next 7 days."
-
-# ── Render verdict ────────────────────────────────────────
-st.markdown(f"""
-<div class="verdict-card" style="background:{bg};border:1.5px solid {border};">
-  <div class="verdict-eyebrow" style="color:{color};">{title}</div>
-  <div class="verdict-title" style="color:{color};">{title}</div>
-  <div class="verdict-body" style="color:#3C3C3E;">{body}{freight_ctx}{no_freight_disclaimer}{vol_note}</div>
-  {limited_data_html}
-  {seasonal_html}
-  <div class="action-pill" style="background:{pill_bg};color:#FFFFFF;">
+    # Hero verdict badge
+    st.markdown(f"""
+<div style="background:{bg};border:2px solid {border};border-radius:24px;
+            padding:30px 22px;text-align:center;margin-bottom:14px;
+            box-shadow:0 4px 24px rgba(0,0,0,0.08);">
+  <div style="font-size:13px;font-weight:800;color:{color};text-transform:uppercase;
+              letter-spacing:0.15em;">{title}</div>
+  <div style="font-size:48px;font-weight:800;color:{color};margin:14px 0 4px;line-height:1;">
+    ${landed_per_ton:.2f}
+  </div>
+  <div style="font-size:13px;color:{color};margin-bottom:6px;font-weight:600;">
+    landed / ton
+  </div>
+  <div style="font-size:14px;color:{color};margin-bottom:18px;">
+    ${landed_per_bale:.2f} per bale · {volume_tons:.2f} tons
+  </div>
+  <div style="background:{color};color:#FFFFFF;border-radius:16px;padding:14px 16px;
+              font-weight:800;font-size:16px;letter-spacing:0.02em;">
     {action}
   </div>
+  {f'<div style="margin-top:14px;font-size:14px;color:{color};">{savings_label}</div>' if savings_label else ""}
 </div>
 """, unsafe_allow_html=True)
 
-st.markdown(f"""
-<div class="forecast-note"
-     style="background:{fc_bg};border:1.5px solid {fc_border};color:{fc_color};">
-  {fc_text}
+    # vs Market card
+    _arrow      = "✅ BELOW MARKET" if landed_diff <= 0 else (
+                   "⚠️ ABOVE MARKET" if landed_diff_pct <= 10 else "❌ OVERPRICED")
+    _diff_color = "#1A7A40" if landed_diff <= 0 else (
+                   "#B07D00" if landed_diff_pct <= 10 else "#C0392B")
+    st.markdown(f"""
+<div style="background:#FFFFFF;border-radius:20px;padding:20px;margin-bottom:14px;
+            box-shadow:0 2px 12px rgba(0,0,0,0.05);border-left:4px solid {_diff_color};">
+  <div style="font-size:11px;font-weight:700;color:#8B7355;text-transform:uppercase;
+              letter-spacing:0.1em;margin-bottom:12px;">vs Market</div>
+  <div style="display:flex;justify-content:space-between;font-size:14px;margin-bottom:6px;">
+    <span>Your landed:</span><span><strong>${landed_per_ton:.2f}/ton</strong></span>
+  </div>
+  <div style="display:flex;justify-content:space-between;font-size:14px;margin-bottom:6px;">
+    <span>Market estimate:</span><span><strong>${market_baseline:.2f}/ton</strong></span>
+  </div>
+  <div style="display:flex;justify-content:space-between;font-size:15px;font-weight:800;
+              color:{_diff_color};margin-top:8px;border-top:1px solid #E5DDD0;padding-top:8px;">
+    <span>Difference:</span><span>${landed_diff:+.2f}/ton</span>
+  </div>
+  <div style="font-size:12px;color:{_diff_color};font-weight:700;margin-top:6px;
+              text-align:right;">{_arrow}</div>
+  <div style="font-size:11px;color:#8B7355;margin-top:10px;">
+    {data_label} · {time_label} · {n_trades} trades
+  </div>
 </div>
 """, unsafe_allow_html=True)
 
-# ── Cost breakdown card ───────────────────────────────────
-_volume_label = (
-    f"{volume_tons:.2f} tons ({bale_count} bales)"
-    if bale_count > 0 else f"{volume_tons:.2f} tons"
-)
-_freight_line = (
-    f'<div style="display:flex;justify-content:space-between;font-size:14px;'
-    f'margin-bottom:4px;"><span>Freight:</span>'
-    f'<span><strong>${freight_total:,.2f}</strong> '
-    f'<span style="color:#8B7355;font-size:12px;">(${freight_per_ton:.2f}/ton)</span>'
-    f'</span></div>'
-) if freight_total > 0 else ""
-
-_unloading_line = (
-    f'<div style="display:flex;justify-content:space-between;font-size:14px;'
-    f'margin-bottom:4px;"><span>Unloading:</span>'
-    f'<span><strong>${unloading:,.2f}</strong> '
-    f'<span style="color:#8B7355;font-size:12px;">(${unloading_per_ton:.2f}/ton)</span>'
-    f'</span></div>'
-) if unloading > 0 else ""
-
-_other_line = (
-    f'<div style="display:flex;justify-content:space-between;font-size:14px;'
-    f'margin-bottom:4px;"><span>Other fees:</span>'
-    f'<span><strong>${other_fees:,.2f}</strong> '
-    f'<span style="color:#8B7355;font-size:12px;">(${other_per_ton:.2f}/ton)</span>'
-    f'</span></div>'
-) if other_fees > 0 else ""
-
-_per_bale_line = (
-    f'<div style="font-size:14px;color:#8B7355;margin-top:2px;">'
-    f'${landed_per_bale:.2f}/bale</div>'
-) if bale_count > 0 else ""
-
-st.markdown(f"""
-<div style="background:#FFFFFF;border-radius:20px;padding:24px 28px;
-            box-shadow:0 2px 20px rgba(0,0,0,0.06);margin-top:12px;">
-  <div style="font-size:11px;font-weight:700;color:#8B7355;
-              text-transform:uppercase;letter-spacing:0.1em;margin-bottom:14px;">
-    📦 Your Landed Cost Breakdown
+    # Cost breakdown card
+    _unl_line = (
+        f'<div style="display:flex;justify-content:space-between;font-size:14px;margin-bottom:4px;">'
+        f'<span>Unloading:</span><span><strong>${unloading:,.2f}</strong></span></div>'
+    ) if unloading > 0 else ""
+    _freight_line = (
+        f'<div style="display:flex;justify-content:space-between;font-size:14px;margin-bottom:4px;">'
+        f'<span>Freight:</span><span><strong>${freight_total:,.2f}</strong> '
+        f'<span style="color:#8B7355;font-size:12px;">(${freight_per_ton:.2f}/ton)</span></span></div>'
+    ) if freight_total > 0 else ""
+    st.markdown(f"""
+<div style="background:#FFFFFF;border-radius:20px;padding:20px;margin-bottom:14px;
+            box-shadow:0 2px 12px rgba(0,0,0,0.05);">
+  <div style="font-size:11px;font-weight:700;color:#8B7355;text-transform:uppercase;
+              letter-spacing:0.1em;margin-bottom:12px;">📦 Cost Breakdown</div>
+  <div style="display:flex;justify-content:space-between;font-size:13px;color:#8B7355;margin-bottom:10px;">
+    <span>Volume:</span>
+    <span><strong style="color:#1C1C1E;">{volume_tons:.2f} tons ({bale_count} bales)</strong></span>
   </div>
-  <div style="display:flex;justify-content:space-between;font-size:13px;
-              color:#8B7355;margin-bottom:12px;">
-    <span>Volume:</span><span><strong style="color:#1C1C1E;">{_volume_label}</strong></span>
-  </div>
-  <div style="display:flex;justify-content:space-between;font-size:13px;
-              color:#8B7355;margin-bottom:14px;">
-    <span>FOB price:</span><span><strong style="color:#1C1C1E;">${fob_price:.2f}/ton</strong></span>
+  <div style="display:flex;justify-content:space-between;font-size:13px;color:#8B7355;margin-bottom:14px;">
+    <span>FOB price:</span>
+    <span><strong style="color:#1C1C1E;">${fob_price:.2f}/ton</strong></span>
   </div>
   <div style="display:flex;justify-content:space-between;font-size:14px;margin-bottom:4px;">
     <span>Hay cost:</span><span><strong>${hay_cost:,.2f}</strong></span>
   </div>
   {_freight_line}
-  {_unloading_line}
-  {_other_line}
+  {_unl_line}
   <div style="border-top:1px solid #E5DDD0;margin:10px 0;"></div>
   <div style="display:flex;justify-content:space-between;font-size:15px;font-weight:700;">
     <span>TOTAL:</span><span>${total_cost:,.2f}</span>
@@ -1371,17 +1151,19 @@ st.markdown(f"""
               color:#C17F3E;margin-top:6px;">
     <span>LANDED:</span><span>${landed_per_ton:.2f}/ton</span>
   </div>
-  {_per_bale_line}
+  <div style="text-align:right;font-size:13px;color:#8B7355;margin-top:2px;">
+    ${landed_per_bale:.2f}/bale
+  </div>
 </div>
 """, unsafe_allow_html=True)
 
-# ── Partial load alert ────────────────────────────────────
-if volume_tons < 35 and freight_total > 0:
-    _premium_per_ton = freight_per_ton - full_load_freight_per_ton
-    _premium_total   = _premium_per_ton * volume_tons
-    st.markdown(f"""
-<div style="background:#FFFBF0;border:1.5px solid #FFE9A0;
-            border-radius:16px;padding:18px 22px;margin-top:10px;color:#B07D00;">
+    # Partial load alert
+    if volume_tons < 35 and freight_total > 0:
+        _premium_per_ton = freight_per_ton - full_load_freight_per_ton
+        _premium_total   = _premium_per_ton * volume_tons
+        st.markdown(f"""
+<div style="background:#FFFBF0;border:1.5px solid #FFE9A0;border-radius:18px;
+            padding:18px 20px;margin-bottom:14px;color:#B07D00;">
   <div style="font-weight:800;font-size:15px;margin-bottom:8px;">
     ⚠️ Partial Load Premium
   </div>
@@ -1391,263 +1173,97 @@ if volume_tons < 35 and freight_total > 0:
     Premium:      <strong>${_premium_per_ton:.2f}/ton extra</strong>
   </div>
   <div style="font-size:13px;margin-top:10px;color:#A06010;">
-    Filling the truck saves ${_premium_per_ton:.2f}/ton →
-    <strong>${_premium_total:,.0f}</strong> on {volume_tons:.2f} tons.
+    Filling the truck saves <strong>${_premium_total:,.0f}</strong> on this load.
   </div>
 </div>
 """, unsafe_allow_html=True)
 
-# ── Market comparison detail ──────────────────────────────
-_mc_color = "#1A7A40" if landed_diff <= 0 else ("#B07D00" if landed_diff_pct <= 10 else "#C0392B")
-_mc_arrow = "✅ BELOW MARKET" if landed_diff <= 0 else (
-    "⚠️ ABOVE MARKET" if landed_diff_pct <= 10 else "❌ OVERPRICED"
-)
-_mc_total = landed_diff * volume_tons
-_mc_total_label = (
-    f"Total {'overpay' if _mc_total > 0 else 'savings'}: "
-    f"<strong>${abs(_mc_total):,.2f}</strong>"
-) if abs(_mc_total) > 1 else ""
+    # Forecast
+    forecast_avg = market_avg
+    forecast_dir = 0
+    if model_pkg and quoted_region:
+        try:
+            model    = model_pkg["model"]
+            features = model_pkg["features"]
+            encoders = model_pkg["encoders"]
+            r_df     = df_prices[
+                (df_prices["state"]  == "California") &
+                (df_prices["region"] == quoted_region)
+            ].sort_values("date")
+            prices  = r_df["price_avg"].values
+            df_nass = pd.read_csv("nass_supply_data.csv")
+            nass_row = df_nass.sort_values("year").iloc[[-1]]
+            fdate   = pd.Timestamp.now() + pd.Timedelta(days=7)
+            m, w, q = fdate.month, fdate.isocalendar()[1], (fdate.month-1)//3+1
+            lag_4w  = float(np.mean(prices[-2:]))  if len(prices) >= 2  else float(prices[-1])
+            lag_13w = float(np.mean(prices[-6:]))  if len(prices) >= 6  else lag_4w
+            lag_26w = float(np.mean(prices[-13:])) if len(prices) >= 13 else lag_13w
+            def _enc(name, val):
+                le = encoders[name]
+                v  = val if val in le.classes_ else le.classes_[0]
+                return int(le.transform([v])[0])
+            feat_row = {
+                "month_sin": np.sin(2*np.pi*m/12),
+                "month_cos": np.cos(2*np.pi*m/12),
+                "week_sin":  np.sin(2*np.pi*w/52),
+                "week_cos":  np.cos(2*np.pi*w/52),
+                "quarter":   q,
+                "region_enc":    _enc("region", quoted_region),
+                "quality_enc":   _enc("quality", quoted_quality),
+                "commodity_enc": _enc("commodity", "ALFALFA HAY"),
+                "lag_4w":    lag_4w,
+                "lag_13w":   lag_13w,
+                "lag_26w":   lag_26w,
+                "roll_4w_mean":  lag_4w,
+                "roll_13w_mean": lag_13w,
+                "production_tons":     float(nass_row["production_tons"].values[0]),
+                "acres_harvested":     float(nass_row["acres_harvested"].values[0]),
+                "yield_tons_per_acre": float(nass_row["yield_tons_per_acre"].values[0]),
+                "alfalfa_share":       float(nass_row["alfalfa_share"].values[0]),
+            }
+            X = np.array([[feat_row.get(f, 0) for f in features]])
+            forecast_avg = float(np.clip(model.predict(X)[0], 50, 800))
+            forecast_dir = forecast_avg - market_avg
+        except Exception:
+            pass
 
-st.markdown(f"""
-<div style="background:#FFFFFF;border-radius:16px;padding:18px 22px;
-            box-shadow:0 2px 12px rgba(0,0,0,0.05);margin-top:10px;
-            border-left:4px solid {_mc_color};">
-  <div style="font-size:11px;font-weight:700;color:#8B7355;
-              text-transform:uppercase;letter-spacing:0.1em;margin-bottom:10px;">
-    Landed cost vs market
-  </div>
-  <div style="display:flex;justify-content:space-between;font-size:14px;margin-bottom:4px;">
-    <span>Your landed cost:</span><span><strong>${landed_per_ton:.2f}/ton</strong></span>
-  </div>
-  <div style="display:flex;justify-content:space-between;font-size:14px;margin-bottom:4px;">
-    <span>Market estimate:</span><span><strong>${market_baseline:.2f}/ton</strong></span>
-  </div>
-  <div style="display:flex;justify-content:space-between;font-size:14px;
-              color:{_mc_color};font-weight:700;margin-top:6px;">
-    <span>Difference:</span>
-    <span>${landed_diff:+.2f}/ton  {_mc_arrow}</span>
-  </div>
-  <div style="font-size:12px;color:#8B7355;margin-top:6px;">{_mc_total_label}</div>
-</div>
-""", unsafe_allow_html=True)
+    if forecast_dir > 8:
+        fc_bg="#FFF8F0"; fc_border="#FFD9A8"; fc_color="#A06010"
+        fc_text=f"📈 Prices forecast to <strong>rise ~${forecast_dir:.0f}/ton</strong> next 7 days. If this quote is fair, lock it in."
+    elif forecast_dir < -8:
+        fc_bg="#F0FAF4"; fc_border="#B8E6C8"; fc_color="#1A5C30"
+        fc_text=f"📉 Prices forecast to <strong>drop ~${abs(forecast_dir):.0f}/ton</strong> next 7 days. Waiting may pay off."
+    else:
+        fc_bg="#F8F6F2"; fc_border="#E5DDD0"; fc_color="#6B6B6B"
+        fc_text=f"→ Prices in {quoted_region} look stable next 7 days."
 
-st.markdown(f"""
-<div class="stat-row">
-  <div class="stat-card">
-    <div class="stat-label">Market Low</div>
-    <div class="stat-value" style="color:#1A7A40;">${market_lo:.0f}</div>
-    <div class="stat-sub">per ton</div>
-  </div>
-  <div class="stat-card" style="border:1.5px solid {border};">
-    <div class="stat-label">Your Quote</div>
-    <div class="stat-value" style="color:{color};">${quoted_price}</div>
-    <div class="stat-sub" style="color:{color};">{pct_rank:.0f}th percentile</div>
-  </div>
-  <div class="stat-card">
-    <div class="stat-label">Market High</div>
-    <div class="stat-value" style="color:#C0392B;">${market_hi:.0f}</div>
-    <div class="stat-sub">per ton</div>
-  </div>
-</div>
-""", unsafe_allow_html=True)
-
-st.markdown(f"""
-<div class="position-card">
-  <div class="position-label">
-    <span>Price Position</span>
-    <span style="color:{color};">{pct_rank:.0f}th percentile</span>
-  </div>
-  <div class="bar-track">
-    <div class="bar-fill"
-         style="width:{pct_rank:.0f}%;
-                background:linear-gradient(90deg,#52C77A,{color});">
-      <div class="bar-dot" style="background:{color};"></div>
-    </div>
-  </div>
-  <div class="bar-ends">
-    <span>Best deal · ${market_lo:.0f}</span>
-    <span>${market_hi:.0f} · Most expensive</span>
-  </div>
-</div>
-""", unsafe_allow_html=True)
-
-# ── Chart ─────────────────────────────────────────────────
-region_history = df_prices[
-    (df_prices["state"]  == "California") &
-    (df_prices["region"] == quoted_region) &
-    (df_prices["date"]   >= (df_prices["date"].max() - pd.Timedelta(days=180)))
-].groupby("date")["price_avg"].mean().reset_index()
-
-if len(region_history) > 3:
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(
-        x=region_history["date"],
-        y=region_history["price_avg"],
-        mode="lines",
-        line=dict(color="#C17F3E", width=2.5),
-        fill="tozeroy",
-        fillcolor="rgba(193,127,62,0.07)",
-        hovertemplate="$%{y:.0f}/ton<br>%{x|%b %d}<extra>Market avg</extra>",
-    ))
-    fig.add_hline(
-        y=quoted_price,
-        line_dash="solid", line_color=color, line_width=2,
-        annotation_text=f"  Your quote ${quoted_price}",
-        annotation_font=dict(size=12, color=color),
-        annotation_position="top left",
-    )
-    fig.add_hline(
-        y=market_avg,
-        line_dash="dot", line_color="#AEAEB2", line_width=1.5,
-        annotation_text=f"  Avg ${market_avg:.0f}",
-        annotation_font=dict(size=11, color="#AEAEB2"),
-        annotation_position="bottom right",
-    )
-    fig.update_layout(
-        plot_bgcolor="#FFFFFF", paper_bgcolor="#FFFFFF",
-        font=dict(family="Nunito Sans", color="#6B6B6B", size=11),
-        margin=dict(t=20, b=20, l=10, r=10),
-        height=190, showlegend=False, hovermode="x unified",
-        xaxis=dict(gridcolor="#F2EDE4", showgrid=False),
-        yaxis=dict(gridcolor="#F2EDE4"),
-    )
-    st.plotly_chart(fig, use_container_width=True)
-
-# ── Freight display ────────────────────────────────────────
-if _freight_data:
-    _d  = _freight_data["dist"]
-    _f  = _freight_data["freight"]
-    _dp = _freight_data["diesel"]
-    _all_in        = quoted_price + _f["freight_per_ton"]
-    _surcharge_note = (
-        f"${_f['fuel_surcharge']:.2f} fuel surcharge"
-        if _f["fuel_surcharge"] > 0 else "No fuel surcharge"
-    )
     st.markdown(f"""
-<div style="background:#FFFFFF;border-radius:20px;padding:24px 28px;
-            box-shadow:0 2px 20px rgba(0,0,0,0.06);margin-top:12px;">
-  <div style="font-size:11px;font-weight:700;color:#8B7355;
-              text-transform:uppercase;letter-spacing:0.1em;margin-bottom:14px;">
-    🚛 Freight Estimate
-  </div>
-  <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px;">
-    <div style="flex:1;min-width:110px;background:#F5F0E8;border-radius:12px;
-                padding:12px 14px;text-align:center;">
-      <div style="font-size:11px;color:#8B7355;text-transform:uppercase;
-                  font-weight:700;letter-spacing:0.08em;">Distance</div>
-      <div style="font-size:22px;font-weight:800;color:#1C1C1E;margin-top:4px;">
-        {_d['miles']:.1f}
-      </div>
-      <div style="font-size:11px;color:#8B7355;">miles</div>
-    </div>
-    <div style="flex:1;min-width:110px;background:#F5F0E8;border-radius:12px;
-                padding:12px 14px;text-align:center;">
-      <div style="font-size:11px;color:#8B7355;text-transform:uppercase;
-                  font-weight:700;letter-spacing:0.08em;">Freight Total</div>
-      <div style="font-size:22px;font-weight:800;color:#C17F3E;margin-top:4px;">
-        ${_f['total_freight']:,.0f}
-      </div>
-      <div style="font-size:11px;color:#8B7355;">per load</div>
-    </div>
-    <div style="flex:1;min-width:110px;background:#F5F0E8;border-radius:12px;
-                padding:12px 14px;text-align:center;">
-      <div style="font-size:11px;color:#8B7355;text-transform:uppercase;
-                  font-weight:700;letter-spacing:0.08em;">Freight / Ton</div>
-      <div style="font-size:22px;font-weight:800;color:#C17F3E;margin-top:4px;">
-        ${_f['freight_per_ton']:.2f}
-      </div>
-      <div style="font-size:11px;color:#8B7355;">per ton</div>
-    </div>
-    <div style="flex:1;min-width:110px;background:#1C1C1E;border-radius:12px;
-                padding:12px 14px;text-align:center;">
-      <div style="font-size:11px;color:#AEAEB2;text-transform:uppercase;
-                  font-weight:700;letter-spacing:0.08em;">All-In Cost</div>
-      <div style="font-size:22px;font-weight:800;color:#FFFFFF;margin-top:4px;">
-        ${_all_in:.2f}
-      </div>
-      <div style="font-size:11px;color:#AEAEB2;">per ton delivered</div>
-    </div>
-  </div>
-  <div style="font-size:12px;color:#8B7355;line-height:1.6;border-top:1px solid #E5DDD0;
-              padding-top:10px;">
-    📍 {_d['origin_address']} → {_d['destination_address']}<br>
-    $5.00/mi · ${_f['base_total']:,.0f} base · {_surcharge_note}
-    (diesel ${_dp:.3f}/gal)
-  </div>
+<div style="background:{fc_bg};border:1.5px solid {fc_border};color:{fc_color};
+            border-radius:16px;padding:16px 18px;font-size:14px;margin-bottom:14px;">
+  {fc_text}
 </div>
 """, unsafe_allow_html=True)
-elif _freight_error:
-    st.warning(f"Freight estimate unavailable: {_freight_error}")
 
-# ── Regional sourcing intelligence ────────────────────────
-if check and quoted_region:
-    _gmaps_key_s = st.secrets.get("GOOGLE_MAPS_API_KEY", "")
-    _diesel_s    = _freight_data["diesel"] if _freight_data else get_current_diesel()
-    _vol_s       = max(quoted_volume, 1)
-    with st.spinner("Finding better sources…"):
-        _sources = find_cheaper_sources(
-            zip_clean, quoted_price, quoted_quality,
-            is_alfalfa_input, df_prices, _diesel_s,
-            _gmaps_key_s, _zip_map, _vol_s,
-        )
-    if _sources:
-        st.markdown("""
-<div style="font-size:11px;font-weight:700;color:#8B7355;text-transform:uppercase;
-            letter-spacing:0.1em;margin:20px 0 10px;">
-  📦 Cheaper Sources Found
-</div>
-""", unsafe_allow_html=True)
-        for i, src in enumerate(_sources):
-            _medal   = ["🥇", "🥈", "🥉"][i]
-            _savings = src["savings_per_ton"]
-            _total_s = _savings * _vol_s if quoted_volume > 0 else None
-            _total_html = (
-                f'<span style="font-size:12px;color:#1A7A40;">'
-                f'Save ${_total_s:,.0f} total on {quoted_volume} tons</span>'
-            ) if _total_s and _total_s > 50 else ""
-            st.markdown(f"""
-<div style="background:#FFFFFF;border-radius:16px;padding:18px 22px;
-            box-shadow:0 2px 12px rgba(0,0,0,0.05);margin-bottom:10px;
-            border-left:4px solid #1A7A40;">
-  <div style="display:flex;justify-content:space-between;align-items:flex-start;
-              flex-wrap:wrap;gap:8px;">
-    <div>
-      <div style="font-size:16px;font-weight:800;color:#1C1C1E;">
-        {_medal} {src['region']}
-      </div>
-      <div style="font-size:12px;color:#8B7355;margin-top:2px;">
-        {src['miles']:.0f} mi · {src['count']} trades in last 13 weeks
-      </div>
-    </div>
-    <div style="text-align:right;">
-      <div style="font-size:22px;font-weight:800;color:#1A7A40;">
-        ${src['delivered_est']:.0f}/ton delivered
-      </div>
-      <div style="font-size:13px;font-weight:700;color:#1A7A40;">
-        Save ${_savings:.2f}/ton vs your quote
-      </div>
-      {_total_html}
-    </div>
-  </div>
-  <div style="display:flex;gap:16px;margin-top:12px;flex-wrap:wrap;">
-    <div style="font-size:12px;color:#6B6B6B;">
-      FOB avg <strong style="color:#1C1C1E;">${src['avg_fob']:.0f}</strong>
-    </div>
-    <div style="font-size:12px;color:#6B6B6B;">
-      + freight <strong style="color:#1C1C1E;">${src['freight_per_ton']:.2f}</strong>/ton
-    </div>
-    <div style="font-size:12px;color:#6B6B6B;">
-      = delivered <strong style="color:#1A7A40;">${src['delivered_est']:.0f}</strong>/ton
-    </div>
-  </div>
-</div>
-""", unsafe_allow_html=True)
+    # Log once per result render
+    if not st.session_state.qc_logged:
+        try:
+            log_quote_check(
+                st.session_state.user_email, zip_clean, quoted_region,
+                fob_price, market_avg, title, volume_tons,
+            )
+        except Exception:
+            pass
+        st.session_state.qc_logged = True
+
+    # Start over
+    if st.button("Start Over", use_container_width=True, type="primary"):
+        qc_restart()
+        st.rerun()
 
 # ── Footer ────────────────────────────────────────────────
-st.markdown(f"""
+st.markdown("""
 <div class="data-footer">
-  {data_label} · {time_label} · {n_trades} transactions · USDA AMS<br>
-  Forecast: XGBoost · MAE ±$17.59/ton · Updated daily<br>
+  USDA AMS · XGBoost forecast · MAE ±$17.59/ton<br>
   Market intelligence only — not financial advice
 </div>
 """, unsafe_allow_html=True)
