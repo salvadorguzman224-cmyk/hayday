@@ -958,27 +958,6 @@ if st.session_state.user_email.lower() == "salvador.guzman224@gmail.com":
             else:
                 st.write("No unserved zips yet")
 
-    with st.expander("👤 Admin — User Signups"):
-        users = load_users()
-        if users:
-            df_users = pd.DataFrame([
-                {
-                    "email":     email,
-                    "name":      u.get("name",""),
-                    "operation": u.get("operation_type",""),
-                    "state":     u.get("state",""),
-                    "checks":    u.get("checks",0),
-                    "joined":    u.get("joined","")[:10],
-                }
-                for email, u in users.items()
-            ])
-            st.dataframe(df_users, use_container_width=True, hide_index=True)
-            st.download_button("Download user list",
-                df_users.to_csv(index=False),
-                "hayscout_users.csv", "text/csv")
-        else:
-            st.write("No signups yet")
-
 # ── Footer ────────────────────────────────────────────────
 st.markdown(f"""
 <div class="data-footer">
