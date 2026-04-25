@@ -858,6 +858,81 @@ pct_rank   = max(0, min(100,
     if market_hi > market_lo else 50
 ))
 
+SEASONAL_CONTEXT = {
+    1:  "January prices are typically elevated — winter stocks running low",
+    2:  "February is historically the highest-price month of the year",
+    3:  "March prices begin declining as first cutting approaches",
+    4:  "April — first cutting imminent, prices softening",
+    5:  "May — first cutting harvest, maximum supply, lowest prices",
+    6:  "June — peak supply month, best time to buy",
+    7:  "July prices rise as summer heat stresses second cutting",
+    8:  "August — second cutting complete, prices stabilizing",
+    9:  "September — third cutting underway, good supply available",
+    10: "October prices begin rising as winter stocks build",
+    11: "November — pre-winter buying season, prices climbing",
+    12: "December — winter premium in effect, lock in supply now",
+}
+seasonal_note = SEASONAL_CONTEXT.get(datetime.now().month, "")
+
+# ── Early freight calculation ──────────────────────────────
+freight_valid   = False
+freight_per_ton = 0.0
+fob_equivalent  = float(quoted_price)
+distance_miles  = None
+_freight_data   = None
+_freight_error  = None
+
+if (check
+        and origin_zip_clean
+        and len(origin_zip_clean) == 5
+        and origin_zip_clean.isdigit()):
+    _gmaps_key = st.secrets.get("GOOGLE_MAPS_API_KEY", "")
+    _diesel    = get_current_diesel()
+    if _gmaps_key:
+        with st.spinner("Calculating freight distance…"):
+            _dist_r = get_driving_distance(origin_zip_clean, zip_clean, _gmaps_key)
+    else:
+        _dist_r = {"valid": False, "message": "Google Maps API key not configured"}
+    if _dist_r["valid"]:
+        _fr_r = calculate_freight(_dist_r["miles"], quoted_volume, _diesel)
+        if _fr_r["valid"]:
+            freight_valid   = True
+            freight_per_ton = _fr_r["freight_per_ton"]
+            fob_equivalent  = round(quoted_price - freight_per_ton, 2)
+            distance_miles  = _dist_r["miles"]
+            _freight_data   = {"dist": _dist_r, "freight": _fr_r, "diesel": _diesel}
+        else:
+            _freight_error = _fr_r.get("message", "Unknown error")
+    else:
+        _freight_error = _dist_r.get("message", "Unknown error")
+
+# ── Delivered / FOB split comparison ──────────────────────
+_cutoff_13w  = df_prices["date"].max() - pd.Timedelta(weeks=13)
+_region_pool = df_prices[
+    (df_prices["state"]  == "California") &
+    (df_prices["region"] == quoted_region) &
+    (df_prices["date"]   >= _cutoff_13w)
+]
+
+def _best_slice(pool, is_del):
+    if "is_delivered" not in pool.columns:
+        return pd.DataFrame()
+    sub = pool[pool["is_delivered"] == is_del]
+    q   = sub[sub["quality"].str.contains(quoted_quality, case=False, na=False)]
+    return q if len(q) >= MIN_RECORDS else sub
+
+_del_pool = _best_slice(_region_pool, 1)
+_fob_pool  = _best_slice(_region_pool, 0)
+
+del_avg = del_lo = del_hi = None
+fob_avg = fob_lo = fob_hi = None
+if len(_del_pool) >= MIN_RECORDS:
+    del_avg, del_lo, del_hi, _ = calc_stats(_del_pool)
+    del_avg = round(del_avg, 1)
+if len(_fob_pool) >= MIN_RECORDS:
+    fob_avg, fob_lo, fob_hi, _ = calc_stats(_fob_pool)
+    fob_avg = round(fob_avg, 1)
+
 # ── Forecast ──────────────────────────────────────────────
 forecast_avg = market_avg
 forecast_dir = 0
@@ -908,35 +983,94 @@ if model_pkg and quoted_region:
         pass
 
 # ── Verdict ───────────────────────────────────────────────
-if diff_pct > 10:
+# Primary diff drives title/colors — FOB when available, else delivered, else combined
+if freight_valid and fob_avg is not None:
+    _pdiff     = fob_equivalent - fob_avg
+    _pdiff_pct = _pdiff / fob_avg * 100
+elif freight_valid and del_avg is not None:
+    _pdiff     = quoted_price - del_avg
+    _pdiff_pct = _pdiff / del_avg * 100
+else:
+    _pdiff     = diff
+    _pdiff_pct = diff_pct
+
+if _pdiff_pct > 10:
     title   = "Overpriced"
     action  = "Negotiate or Walk Away"
-    body    = f"You were quoted <strong>${quoted_price}/ton</strong> — that's <strong>${diff:.0f} ({diff_pct:.1f}%) above</strong> the {data_label} average of <strong>${market_avg:.0f}/ton</strong> ({time_label}). Push back hard or find another seller."
     bg      = "#FFF2F0"; border = "#FFD5CC"; color = "#C0392B"; pill_bg = "#C0392B"
-elif diff_pct > 5:
+elif _pdiff_pct > 5:
     title   = "Slightly High"
     action  = "Try to Negotiate"
-    body    = f"You were quoted <strong>${quoted_price}/ton</strong> — <strong>${diff:.0f} ({diff_pct:.1f}%) above</strong> the {data_label} average of <strong>${market_avg:.0f}/ton</strong> ({time_label}). You have room to push back."
     bg      = "#FFFBF0"; border = "#FFE9A0"; color = "#B07D00"; pill_bg = "#C17F3E"
-elif diff_pct >= -5:
+elif _pdiff_pct >= -5:
     title   = "Fair Price"
     action  = "Buy Now" if forecast_dir > 8 else "Good to Go"
-    body    = f"You were quoted <strong>${quoted_price}/ton</strong> — within <strong>${abs(diff):.0f} ({abs(diff_pct):.1f}%)</strong> of the {data_label} average of <strong>${market_avg:.0f}/ton</strong> ({time_label}). This is a fair deal."
     bg      = "#F0FAF4"; border = "#B8E6C8"; color = "#1A7A40"; pill_bg = "#1A7A40"
 else:
     title   = "Below Market"
     action  = "Buy Now"
-    body    = f"You were quoted <strong>${quoted_price}/ton</strong> — <strong>${abs(diff):.0f} ({abs(diff_pct):.1f}%) below</strong> the {data_label} average of <strong>${market_avg:.0f}/ton</strong> ({time_label}). This is a great deal — act fast."
     bg      = "#F0FAF4"; border = "#B8E6C8"; color = "#1A7A40"; pill_bg = "#1A7A40"
+
+# Body: dual comparison when freight is valid, single comparison otherwise
+if freight_valid and (del_avg is not None or fob_avg is not None):
+    _parts = []
+    if del_avg is not None:
+        _dd  = quoted_price - del_avg
+        _ddp = _dd / del_avg * 100
+        _ds  = "above" if _dd >= 0 else "below"
+        _parts.append(
+            f"<strong>Delivered comparison:</strong> ${quoted_price}/ton quoted vs "
+            f"${del_avg:.0f} delivered market avg → {abs(_ddp):.1f}% {_ds}"
+        )
+    if fob_avg is not None:
+        _fd  = fob_equivalent - fob_avg
+        _fdp = _fd / fob_avg * 100
+        _fs  = "above" if _fd >= 0 else "below"
+        _chk = "✅" if abs(_fdp) <= 5 else ("⚠️" if _fdp <= 10 else "❌")
+        _parts.append(
+            f"<strong>FOB equivalent (more accurate):</strong> ${fob_equivalent:.0f} FOB vs "
+            f"${fob_avg:.0f} FOB avg → {abs(_fdp):.1f}% {_fs} {_chk}"
+        )
+    if del_avg is not None and fob_avg is not None:
+        _spread = abs(del_avg - fob_avg)
+        _parts.append(
+            f"The ${_spread:.0f}/ton spread is within normal freight variation for this route"
+        )
+    body = "<br><br>".join(_parts)
+    freight_pct = freight_per_ton / quoted_price * 100
+    freight_ctx = (
+        f"<br><br>🚛 Freight accounts for <strong>${freight_per_ton:.2f}/ton "
+        f"({freight_pct:.0f}%)</strong> of your total quote"
+    ) if is_delivered_input else ""
+    no_freight_disclaimer = ""
+else:
+    _ds = "above" if diff >= 0 else "below"
+    body = (
+        f"You were quoted <strong>${quoted_price}/ton</strong> — "
+        f"<strong>${abs(diff):.0f} ({abs(diff_pct):.1f}%) {_ds}</strong> "
+        f"the {data_label} average of <strong>${market_avg:.0f}/ton</strong> ({time_label})."
+    )
+    freight_ctx = ""
+    no_freight_disclaimer = (
+        '<br><br><span style="color:#B07D00;">⚠️ Add origin zip for '
+        'freight-adjusted comparison</span>'
+        if not origin_zip_clean else ""
+    )
 
 vol_note = ""
 if quoted_volume > 0:
-    overpay = diff * quoted_volume
-    if abs(overpay) > 50:
-        if overpay > 0:
-            vol_note = f"<br><br>At {quoted_volume} tons, you'd <strong>overpay ${overpay:,.0f}</strong> vs market."
-        else:
-            vol_note = f"<br><br>At {quoted_volume} tons, you'd <strong>save ${abs(overpay):,.0f}</strong> vs market."
+    _voverpay = (quoted_price - market_avg) * quoted_volume
+    if abs(_voverpay) > 50:
+        vol_note = (
+            f"<br><br>At {quoted_volume} tons, you'd <strong>overpay ${_voverpay:,.0f}</strong> vs market."
+            if _voverpay > 0
+            else f"<br><br>At {quoted_volume} tons, you'd <strong>save ${abs(_voverpay):,.0f}</strong> vs market."
+        )
+
+seasonal_html = (
+    f'<div style="margin-top:12px;font-size:12px;color:#8B7355;font-style:italic;">'
+    f'{seasonal_note}</div>'
+) if seasonal_note else ""
 
 if forecast_dir > 8:
     fc_bg="#FFF8F0"; fc_border="#FFD9A8"; fc_color="#A06010"
@@ -948,12 +1082,13 @@ else:
     fc_bg="#F8F6F2"; fc_border="#E5DDD0"; fc_color="#6B6B6B"
     fc_text=f"→ Prices in {quoted_region} look stable over the next 7 days."
 
-# ── Render ────────────────────────────────────────────────
+# ── Render verdict ────────────────────────────────────────
 st.markdown(f"""
 <div class="verdict-card" style="background:{bg};border:1.5px solid {border};">
   <div class="verdict-eyebrow" style="color:{color};">{title}</div>
   <div class="verdict-title" style="color:{color};">{title}</div>
-  <div class="verdict-body" style="color:#3C3C3E;">{body}{vol_note}</div>
+  <div class="verdict-body" style="color:#3C3C3E;">{body}{freight_ctx}{no_freight_disclaimer}{vol_note}</div>
+  {seasonal_html}
   <div class="action-pill" style="background:{pill_bg};color:#FFFFFF;">
     {action}
   </div>
@@ -1049,30 +1184,17 @@ if len(region_history) > 3:
     )
     st.plotly_chart(fig, use_container_width=True)
 
-# ── Freight estimate ───────────────────────────────────────
-if (check
-        and origin_zip_clean
-        and len(origin_zip_clean) == 5
-        and origin_zip_clean.isdigit()):
-    gmaps_key = st.secrets.get("GOOGLE_MAPS_API_KEY", "")
-    diesel    = get_current_diesel()
-
-    if gmaps_key:
-        with st.spinner("Calculating freight distance…"):
-            dist = get_driving_distance(origin_zip_clean, zip_clean, gmaps_key)
-    else:
-        dist = {"valid": False, "message": "Google Maps API key not configured"}
-
-    if dist["valid"]:
-        freight = calculate_freight(dist["miles"], quoted_volume, diesel)
-        if freight["valid"]:
-            all_in     = quoted_price + freight["freight_per_ton"]
-            surcharge_note = (
-                f"${freight['fuel_surcharge']:.2f} fuel surcharge"
-                if freight["fuel_surcharge"] > 0
-                else "No fuel surcharge"
-            )
-            st.markdown(f"""
+# ── Freight display ────────────────────────────────────────
+if _freight_data:
+    _d  = _freight_data["dist"]
+    _f  = _freight_data["freight"]
+    _dp = _freight_data["diesel"]
+    _all_in        = quoted_price + _f["freight_per_ton"]
+    _surcharge_note = (
+        f"${_f['fuel_surcharge']:.2f} fuel surcharge"
+        if _f["fuel_surcharge"] > 0 else "No fuel surcharge"
+    )
+    st.markdown(f"""
 <div style="background:#FFFFFF;border-radius:20px;padding:24px 28px;
             box-shadow:0 2px 20px rgba(0,0,0,0.06);margin-top:12px;">
   <div style="font-size:11px;font-weight:700;color:#8B7355;
@@ -1085,7 +1207,7 @@ if (check
       <div style="font-size:11px;color:#8B7355;text-transform:uppercase;
                   font-weight:700;letter-spacing:0.08em;">Distance</div>
       <div style="font-size:22px;font-weight:800;color:#1C1C1E;margin-top:4px;">
-        {dist['miles']:.1f}
+        {_d['miles']:.1f}
       </div>
       <div style="font-size:11px;color:#8B7355;">miles</div>
     </div>
@@ -1094,7 +1216,7 @@ if (check
       <div style="font-size:11px;color:#8B7355;text-transform:uppercase;
                   font-weight:700;letter-spacing:0.08em;">Freight Total</div>
       <div style="font-size:22px;font-weight:800;color:#C17F3E;margin-top:4px;">
-        ${freight['total_freight']:,.0f}
+        ${_f['total_freight']:,.0f}
       </div>
       <div style="font-size:11px;color:#8B7355;">per load</div>
     </div>
@@ -1103,7 +1225,7 @@ if (check
       <div style="font-size:11px;color:#8B7355;text-transform:uppercase;
                   font-weight:700;letter-spacing:0.08em;">Freight / Ton</div>
       <div style="font-size:22px;font-weight:800;color:#C17F3E;margin-top:4px;">
-        ${freight['freight_per_ton']:.2f}
+        ${_f['freight_per_ton']:.2f}
       </div>
       <div style="font-size:11px;color:#8B7355;">per ton</div>
     </div>
@@ -1112,23 +1234,21 @@ if (check
       <div style="font-size:11px;color:#AEAEB2;text-transform:uppercase;
                   font-weight:700;letter-spacing:0.08em;">All-In Cost</div>
       <div style="font-size:22px;font-weight:800;color:#FFFFFF;margin-top:4px;">
-        ${all_in:.2f}
+        ${_all_in:.2f}
       </div>
       <div style="font-size:11px;color:#AEAEB2;">per ton delivered</div>
     </div>
   </div>
   <div style="font-size:12px;color:#8B7355;line-height:1.6;border-top:1px solid #E5DDD0;
               padding-top:10px;">
-    📍 {dist['origin_address']} → {dist['destination_address']}<br>
-    $5.00/mi · ${freight['base_total']:,.0f} base · {surcharge_note}
-    (diesel ${diesel:.3f}/gal)
+    📍 {_d['origin_address']} → {_d['destination_address']}<br>
+    $5.00/mi · ${_f['base_total']:,.0f} base · {_surcharge_note}
+    (diesel ${_dp:.3f}/gal)
   </div>
 </div>
 """, unsafe_allow_html=True)
-        else:
-            st.info(f"Freight: {freight['message']}")
-    else:
-        st.warning(f"Freight estimate unavailable: {dist.get('message', 'Unknown error')}")
+elif _freight_error:
+    st.warning(f"Freight estimate unavailable: {_freight_error}")
 
 # ── Footer ────────────────────────────────────────────────
 st.markdown(f"""
