@@ -573,7 +573,7 @@ if os.path.exists("zip_to_region.json"):
         _zip_map = _json.load(_zf)
 
 zip_clean          = zip_input.strip() if zip_input else ""
-auto_region        = ___zip_map.get(zip_clean, None)
+auto_region        = _zip_map.get(zip_clean, None)
 quoted_region      = None
 zip_not_in_service = False
 
