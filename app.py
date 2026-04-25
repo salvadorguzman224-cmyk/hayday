@@ -499,6 +499,26 @@ REGION_COORDS = {
     "Montana":                    (46.8797, -110.3626),
 }
 
+CA_VALID_REGIONS = [
+    "Central San Joaquin Valley",
+    "North San Joaquin Valley",
+    "Sacramento Valley",
+    "North Inter-Mountains",
+    "Southeast",
+]
+
+QUALITY_MATCH = {
+    "Supreme":  ["Supreme", "Premium/Supreme"],
+    "Premium":  ["Premium", "Good/Premium", "Premium/Supreme"],
+    "Good":     ["Good", "Fair/Good", "Good/Premium"],
+    "Fair":     ["Fair", "Fair/Good"],
+    "Utility":  ["Utility"],
+}
+
+def filter_by_quality(df, quality):
+    matches = QUALITY_MATCH.get(quality, [quality])
+    return df[df["quality"].isin(matches)]
+
 def haversine_miles(coord1, coord2):
     lat1, lon1 = coord1
     lat2, lon2 = coord2
@@ -548,9 +568,7 @@ def find_cheaper_sources(
     recent   = df_prices[df_prices["date"] >= cutoff].copy()
     if is_alfalfa and "is_alfalfa" in recent.columns:
         recent = recent[recent["is_alfalfa"] == 1]
-    quality_data = recent[
-        recent["quality"].str.contains(quoted_quality, case=False, na=False)
-    ]
+    quality_data = filter_by_quality(recent, quoted_quality)
     if len(quality_data) < 3:
         quality_data = recent
 
@@ -889,25 +907,7 @@ if check and quoted_region is None and not zip_not_in_service:
     st.stop()
 
 # ── Market comparison ─────────────────────────────────────
-MIN_RECORDS = 5
-
-def get_base_data(df, region, weeks_back):
-    cutoff = df["date"].max() - pd.Timedelta(weeks=weeks_back)
-    data   = df[
-        (df["state"]  == "California") &
-        (df["region"] == region) &
-        (df["date"]   >= cutoff)
-    ].copy()
-    if is_alfalfa_input and "is_alfalfa" in data.columns:
-        sub = data[data["is_alfalfa"] == 1]
-        if len(sub) >= MIN_RECORDS: data = sub
-    if is_delivered_input and "is_delivered" in data.columns:
-        sub = data[data["is_delivered"] == 1]
-        if len(sub) >= MIN_RECORDS: data = sub
-    return data
-
-def get_quality_data(base, quality):
-    return base[base["quality"].str.contains(quality, case=False, na=False)]
+MIN_RECORDS = 3
 
 def calc_stats(data):
     return (
@@ -917,51 +917,87 @@ def calc_stats(data):
         len(data),
     )
 
-market_avg = market_lo = market_hi = None
-n_trades   = 0
-data_label = ""
-time_label = ""
+def get_market_comparison(df, quoted_region, quoted_quality,
+                          is_alfalfa, is_delivered):
+    ca_data = df[df["state"] == "California"].copy()
 
-if quoted_region:
-    for weeks, label in [(4,"last 4 weeks"),(8,"last 8 weeks"),(13,"last 13 weeks")]:
-        base  = get_base_data(df_prices, quoted_region, weeks)
-        qdata = get_quality_data(base, quoted_quality)
+    def apply_filters(data, weeks):
+        cutoff = data["date"].max() - pd.Timedelta(weeks=weeks)
+        result = data[data["date"] >= cutoff].copy()
+        if is_alfalfa and "is_alfalfa" in result.columns:
+            sub = result[result["is_alfalfa"] == 1]
+            if len(sub) >= MIN_RECORDS: result = sub
+        if is_delivered and "is_delivered" in result.columns:
+            sub = result[result["is_delivered"] == 1]
+            if len(sub) >= MIN_RECORDS: result = sub
+        return result
+
+    def stats_dict(data, label, time_label):
+        return {
+            "market_avg":  round(data["price_avg"].mean(), 1),
+            "market_lo":   round(data["price_avg"].min(),  1),
+            "market_hi":   round(data["price_avg"].max(),  1),
+            "n_trades":    len(data),
+            "data_label":  label,
+            "time_label":  time_label,
+        }
+
+    # Steps 1-4: same quality + same region, expanding time window
+    for weeks in [4, 8, 13, 26]:
+        base  = apply_filters(ca_data[ca_data["region"] == quoted_region], weeks)
+        qdata = filter_by_quality(base, quoted_quality)
         if len(qdata) >= MIN_RECORDS:
-            market_avg, market_lo, market_hi, n_trades = calc_stats(qdata)
-            data_label = f"{quoted_quality} · {quoted_region}"
-            time_label = label
-            break
+            return stats_dict(
+                qdata,
+                f"{quoted_quality} · {quoted_region}",
+                f"last {weeks} weeks",
+            )
 
-    if market_avg is None:
-        base = get_base_data(df_prices, quoted_region, 4)
-        if len(base) >= MIN_RECORDS:
-            market_avg, market_lo, market_hi, n_trades = calc_stats(base)
-            data_label = f"{quoted_region} (all grades)"
-            time_label = "last 4 weeks"
+    # Step 5: all grades + same region + 13 weeks
+    base = apply_filters(ca_data[ca_data["region"] == quoted_region], 13)
+    if len(base) >= MIN_RECORDS:
+        return stats_dict(
+            base,
+            f"{quoted_region} · all grades",
+            "last 13 weeks — grade data limited",
+        )
 
-    if market_avg is None:
-        cutoff  = df_prices["date"].max() - pd.Timedelta(weeks=13)
-        ca_data = df_prices[
-            (df_prices["state"] == "California") &
-            (df_prices["date"]  >= cutoff)
-        ]
-        qdata = get_quality_data(ca_data, quoted_quality)
-        if len(qdata) >= MIN_RECORDS:
-            market_avg, market_lo, market_hi, n_trades = calc_stats(qdata)
-            data_label = f"{quoted_quality} · CA Statewide"
-            time_label = "last 13 weeks"
-        elif len(ca_data) >= MIN_RECORDS:
-            market_avg, market_lo, market_hi, n_trades = calc_stats(ca_data)
-            data_label = "CA Statewide"
-            time_label = "last 13 weeks"
+    # Step 6: same quality + all valid CA regions + 13 weeks
+    base  = apply_filters(ca_data[ca_data["region"].isin(CA_VALID_REGIONS)], 13)
+    qdata = filter_by_quality(base, quoted_quality)
+    if len(qdata) >= MIN_RECORDS:
+        return stats_dict(
+            qdata,
+            f"{quoted_quality} · CA regional avg",
+            "last 13 weeks — limited local data",
+        )
 
-if market_avg is None:
+    # Step 7: all grades + all valid CA regions + 13 weeks
+    base = apply_filters(ca_data[ca_data["region"].isin(CA_VALID_REGIONS)], 13)
+    if len(base) >= MIN_RECORDS:
+        return stats_dict(
+            base,
+            "CA regional avg · all grades",
+            "last 13 weeks — limited local data",
+        )
+
+    return None
+
+_mc_result = get_market_comparison(
+    df_prices, quoted_region, quoted_quality,
+    is_alfalfa_input, is_delivered_input,
+)
+
+if _mc_result is None:
     st.warning("Not enough market data for this region yet.")
     st.stop()
 
-market_avg = round(market_avg, 1)
-market_lo  = round(market_lo,  1)
-market_hi  = round(market_hi,  1)
+market_avg = _mc_result["market_avg"]
+market_lo  = _mc_result["market_lo"]
+market_hi  = _mc_result["market_hi"]
+n_trades   = _mc_result["n_trades"]
+data_label = _mc_result["data_label"]
+time_label = _mc_result["time_label"]
 diff       = quoted_price - market_avg
 diff_pct   = diff / market_avg * 100
 pct_rank   = max(0, min(100,
@@ -1029,7 +1065,7 @@ def _best_slice(pool, is_del):
     if "is_delivered" not in pool.columns:
         return pd.DataFrame()
     sub = pool[pool["is_delivered"] == is_del]
-    q   = sub[sub["quality"].str.contains(quoted_quality, case=False, na=False)]
+    q   = filter_by_quality(sub, quoted_quality)
     return q if len(q) >= MIN_RECORDS else sub
 
 _del_pool = _best_slice(_region_pool, 1)
@@ -1183,6 +1219,14 @@ seasonal_html = (
     f'{seasonal_note}</div>'
 ) if seasonal_note else ""
 
+limited_data_html = (
+    f'<div style="margin-top:10px;background:#F5F0E8;border-radius:8px;'
+    f'padding:8px 12px;font-size:12px;color:#8B7355;">'
+    f'⚠️ Limited recent data for this region — comparison based on '
+    f'{n_trades} transactions over a wider time window. '
+    f'Check back weekly as new USDA data is added.</div>'
+) if "limited" in time_label.lower() else ""
+
 if forecast_dir > 8:
     fc_bg="#FFF8F0"; fc_border="#FFD9A8"; fc_color="#A06010"
     fc_text=f"📈 Prices forecast to <strong>rise ~${forecast_dir:.0f}/ton</strong> next 7 days. If this quote is fair, consider locking it in."
@@ -1199,6 +1243,7 @@ st.markdown(f"""
   <div class="verdict-eyebrow" style="color:{color};">{title}</div>
   <div class="verdict-title" style="color:{color};">{title}</div>
   <div class="verdict-body" style="color:#3C3C3E;">{body}{freight_ctx}{no_freight_disclaimer}{vol_note}</div>
+  {limited_data_html}
   {seasonal_html}
   <div class="action-pill" style="background:{pill_bg};color:#FFFFFF;">
     {action}
