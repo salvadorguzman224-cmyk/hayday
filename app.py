@@ -939,25 +939,6 @@ if len(region_history) > 3:
     )
     st.plotly_chart(fig, use_container_width=True)
 
-# ── Admin ─────────────────────────────────────────────────
-if st.session_state.user_email.lower() == "salvador.guzman224@gmail.com":
-    with st.expander("📍 Admin — Unserved Zip Codes"):
-        if os.path.exists("unserved_zips.json"):
-            with open("unserved_zips.json") as f:
-                unserved = json.load(f)
-            if unserved:
-                df_zips = pd.DataFrame([
-                    {"zip": z, "attempts": c}
-                    for z,c in sorted(unserved.items(),
-                                      key=lambda x: x[1], reverse=True)
-                ])
-                st.dataframe(df_zips, use_container_width=True, hide_index=True)
-                st.download_button("Download CSV",
-                    df_zips.to_csv(index=False),
-                    "unserved_zips.csv", "text/csv")
-            else:
-                st.write("No unserved zips yet")
-
 # ── Footer ────────────────────────────────────────────────
 st.markdown(f"""
 <div class="data-footer">
