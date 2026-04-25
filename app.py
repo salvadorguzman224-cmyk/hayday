@@ -1049,6 +1049,87 @@ if len(region_history) > 3:
     )
     st.plotly_chart(fig, use_container_width=True)
 
+# ── Freight estimate ───────────────────────────────────────
+if (check
+        and origin_zip_clean
+        and len(origin_zip_clean) == 5
+        and origin_zip_clean.isdigit()):
+    gmaps_key = st.secrets.get("GOOGLE_MAPS_API_KEY", "")
+    diesel    = get_current_diesel()
+
+    if gmaps_key:
+        with st.spinner("Calculating freight distance…"):
+            dist = get_driving_distance(origin_zip_clean, zip_clean, gmaps_key)
+    else:
+        dist = {"valid": False, "message": "Google Maps API key not configured"}
+
+    if dist["valid"]:
+        freight = calculate_freight(dist["miles"], quoted_volume, diesel)
+        if freight["valid"]:
+            all_in     = quoted_price + freight["freight_per_ton"]
+            surcharge_note = (
+                f"${freight['fuel_surcharge']:.2f} fuel surcharge"
+                if freight["fuel_surcharge"] > 0
+                else "No fuel surcharge"
+            )
+            st.markdown(f"""
+<div style="background:#FFFFFF;border-radius:20px;padding:24px 28px;
+            box-shadow:0 2px 20px rgba(0,0,0,0.06);margin-top:12px;">
+  <div style="font-size:11px;font-weight:700;color:#8B7355;
+              text-transform:uppercase;letter-spacing:0.1em;margin-bottom:14px;">
+    🚛 Freight Estimate
+  </div>
+  <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px;">
+    <div style="flex:1;min-width:110px;background:#F5F0E8;border-radius:12px;
+                padding:12px 14px;text-align:center;">
+      <div style="font-size:11px;color:#8B7355;text-transform:uppercase;
+                  font-weight:700;letter-spacing:0.08em;">Distance</div>
+      <div style="font-size:22px;font-weight:800;color:#1C1C1E;margin-top:4px;">
+        {dist['miles']:.1f}
+      </div>
+      <div style="font-size:11px;color:#8B7355;">miles</div>
+    </div>
+    <div style="flex:1;min-width:110px;background:#F5F0E8;border-radius:12px;
+                padding:12px 14px;text-align:center;">
+      <div style="font-size:11px;color:#8B7355;text-transform:uppercase;
+                  font-weight:700;letter-spacing:0.08em;">Freight Total</div>
+      <div style="font-size:22px;font-weight:800;color:#C17F3E;margin-top:4px;">
+        ${freight['total_freight']:,.0f}
+      </div>
+      <div style="font-size:11px;color:#8B7355;">per load</div>
+    </div>
+    <div style="flex:1;min-width:110px;background:#F5F0E8;border-radius:12px;
+                padding:12px 14px;text-align:center;">
+      <div style="font-size:11px;color:#8B7355;text-transform:uppercase;
+                  font-weight:700;letter-spacing:0.08em;">Freight / Ton</div>
+      <div style="font-size:22px;font-weight:800;color:#C17F3E;margin-top:4px;">
+        ${freight['freight_per_ton']:.2f}
+      </div>
+      <div style="font-size:11px;color:#8B7355;">per ton</div>
+    </div>
+    <div style="flex:1;min-width:110px;background:#1C1C1E;border-radius:12px;
+                padding:12px 14px;text-align:center;">
+      <div style="font-size:11px;color:#AEAEB2;text-transform:uppercase;
+                  font-weight:700;letter-spacing:0.08em;">All-In Cost</div>
+      <div style="font-size:22px;font-weight:800;color:#FFFFFF;margin-top:4px;">
+        ${all_in:.2f}
+      </div>
+      <div style="font-size:11px;color:#AEAEB2;">per ton delivered</div>
+    </div>
+  </div>
+  <div style="font-size:12px;color:#8B7355;line-height:1.6;border-top:1px solid #E5DDD0;
+              padding-top:10px;">
+    📍 {dist['origin_address']} → {dist['destination_address']}<br>
+    $5.00/mi · ${freight['base_total']:,.0f} base · {surcharge_note}
+    (diesel ${diesel:.3f}/gal)
+  </div>
+</div>
+""", unsafe_allow_html=True)
+        else:
+            st.info(f"Freight: {freight['message']}")
+    else:
+        st.warning(f"Freight estimate unavailable: {dist.get('message', 'Unknown error')}")
+
 # ── Footer ────────────────────────────────────────────────
 st.markdown(f"""
 <div class="data-footer">
