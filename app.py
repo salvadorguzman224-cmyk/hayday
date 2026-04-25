@@ -779,6 +779,80 @@ with col_o:
         st.rerun()
 
 
+# ── Market comparison helpers ─────────────────────────────
+MIN_RECORDS = 3
+
+def calc_stats(data):
+    return (
+        data["price_avg"].mean(),
+        data["price_avg"].min(),
+        data["price_avg"].max(),
+        len(data),
+    )
+
+def get_market_comparison(df, quoted_region, quoted_quality,
+                          is_alfalfa, is_delivered):
+    ca_data = df[df["state"] == "California"].copy()
+
+    def apply_filters(data, weeks):
+        cutoff = data["date"].max() - pd.Timedelta(weeks=weeks)
+        result = data[data["date"] >= cutoff].copy()
+        if is_alfalfa and "is_alfalfa" in result.columns:
+            sub = result[result["is_alfalfa"] == 1]
+            if len(sub) >= MIN_RECORDS: result = sub
+        if is_delivered and "is_delivered" in result.columns:
+            sub = result[result["is_delivered"] == 1]
+            if len(sub) >= MIN_RECORDS: result = sub
+        return result
+
+    def stats_dict(data, label, time_label):
+        return {
+            "market_avg":  round(data["price_avg"].mean(), 1),
+            "market_lo":   round(data["price_avg"].min(),  1),
+            "market_hi":   round(data["price_avg"].max(),  1),
+            "n_trades":    len(data),
+            "data_label":  label,
+            "time_label":  time_label,
+        }
+
+    for weeks in [4, 8, 13, 26]:
+        base  = apply_filters(ca_data[ca_data["region"] == quoted_region], weeks)
+        qdata = filter_by_quality(base, quoted_quality)
+        if len(qdata) >= MIN_RECORDS:
+            return stats_dict(
+                qdata,
+                f"{quoted_quality} · {quoted_region}",
+                f"last {weeks} weeks",
+            )
+
+    base = apply_filters(ca_data[ca_data["region"] == quoted_region], 13)
+    if len(base) >= MIN_RECORDS:
+        return stats_dict(
+            base,
+            f"{quoted_region} · all grades",
+            "last 13 weeks — grade data limited",
+        )
+
+    base  = apply_filters(ca_data[ca_data["region"].isin(CA_VALID_REGIONS)], 13)
+    qdata = filter_by_quality(base, quoted_quality)
+    if len(qdata) >= MIN_RECORDS:
+        return stats_dict(
+            qdata,
+            f"{quoted_quality} · CA regional avg",
+            "last 13 weeks — limited local data",
+        )
+
+    base = apply_filters(ca_data[ca_data["region"].isin(CA_VALID_REGIONS)], 13)
+    if len(base) >= MIN_RECORDS:
+        return stats_dict(
+            base,
+            "CA regional avg · all grades",
+            "last 13 weeks — limited local data",
+        )
+
+    return None
+
+
 # ── Mobile-first overrides ────────────────────────────────
 st.markdown("""
 <style>
