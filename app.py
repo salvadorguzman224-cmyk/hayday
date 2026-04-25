@@ -781,26 +781,95 @@ with col_o:
 # ── Input form ────────────────────────────────────────────
 st.markdown('<div class="input-card">', unsafe_allow_html=True)
 
-col1, col2 = st.columns(2)
-with col1:
-    quoted_price = st.number_input(
-        "Price quoted $/ton",
-        min_value=50, max_value=800,
-        value=180, step=5,
+# SECTION A — What are you buying?
+st.markdown(
+    '<div style="font-size:11px;font-weight:700;color:#8B7355;'
+    'text-transform:uppercase;letter-spacing:0.1em;margin-bottom:8px;">'
+    'A · What are you buying?</div>',
+    unsafe_allow_html=True,
+)
+colA1, colA2 = st.columns(2)
+with colA1:
+    quoted_quality = st.selectbox("Quality grade", options=QUALITIES, index=1)
+with colA2:
+    cutting = st.selectbox(
+        "Cutting (optional)",
+        options=["Unknown", "1st", "2nd", "3rd", "4th"], index=0,
+    )
+is_alfalfa_input = st.checkbox("🌿  Pure Alfalfa", value=True)
+
+# SECTION B — Volume
+st.markdown(
+    '<div style="font-size:11px;font-weight:700;color:#8B7355;'
+    'text-transform:uppercase;letter-spacing:0.1em;margin:14px 0 8px;">'
+    'B · Volume</div>',
+    unsafe_allow_html=True,
+)
+volume_type = st.radio(
+    "Volume type", ["Tons", "Bales"], horizontal=True, label_visibility="collapsed",
+)
+if volume_type == "Tons":
+    volume_tons  = float(st.number_input(
+        "Volume (tons)", min_value=1.0, max_value=1000.0, value=22.0, step=0.5,
+    ))
+    bale_count   = 0
+    lbs_per_bale = 0
+else:
+    colB1, colB2 = st.columns(2)
+    with colB1:
+        bale_count = int(st.number_input(
+            "Number of bales", min_value=1, max_value=10000, value=512, step=1,
+        ))
+    with colB2:
+        lbs_per_bale = int(st.number_input(
+            "Lbs per bale", min_value=50, max_value=150, value=88, step=1,
+        ))
+    volume_tons = (bale_count * lbs_per_bale) / 2000
+    st.markdown(
+        f'<div style="font-size:13px;color:#8B7355;margin-top:-4px;">'
+        f'{bale_count} bales × {lbs_per_bale} lbs = '
+        f'<strong>{volume_tons:.2f} tons</strong></div>',
+        unsafe_allow_html=True,
     )
 
+# SECTION C — Price
+st.markdown(
+    '<div style="font-size:11px;font-weight:700;color:#8B7355;'
+    'text-transform:uppercase;letter-spacing:0.1em;margin:14px 0 8px;">'
+    'C · Price</div>',
+    unsafe_allow_html=True,
+)
+price_type = st.radio(
+    "Price type",
+    ["FOB (at origin)", "Delivered (includes freight)"],
+    horizontal=True, label_visibility="collapsed",
+)
+if price_type == "FOB (at origin)":
+    fob_price_input       = float(st.number_input(
+        "FOB price ($/ton)", min_value=50.0, max_value=800.0, value=215.0, step=5.0,
+    ))
+    delivered_price_input = 0.0
+else:
+    delivered_price_input = float(st.number_input(
+        "Delivered price ($/ton)", min_value=50.0, max_value=800.0, value=280.0, step=5.0,
+    ))
+    fob_price_input       = 0.0
+
+# SECTION D — Location
+st.markdown(
+    '<div style="font-size:11px;font-weight:700;color:#8B7355;'
+    'text-transform:uppercase;letter-spacing:0.1em;margin:14px 0 8px;">'
+    'D · Location</div>',
+    unsafe_allow_html=True,
+)
 colz1, colz2 = st.columns(2)
 with colz1:
     zip_input = st.text_input(
-        "Delivery zip (your location)",
-        placeholder="e.g. 93706",
-        max_chars=5,
+        "Delivery zip (your location)", placeholder="e.g. 93706", max_chars=5,
     )
 with colz2:
     origin_zip_input = st.text_input(
-        "Origin zip (where hay ships from)",
-        placeholder="e.g. 95376",
-        max_chars=5,
+        "Origin zip (where hay ships from)", placeholder="e.g. 95376", max_chars=5,
     )
 
 # Zip → region
@@ -822,7 +891,7 @@ if zip_clean and len(zip_clean) == 5 and zip_clean.isdigit():
         st.markdown(f"""
         <div style="background:#F0FAF4;border:1.5px solid #B8E6C8;
                     border-radius:10px;padding:10px 14px;
-                    margin-top:-8px;margin-bottom:8px;
+                    margin-top:-4px;margin-bottom:8px;
                     font-size:13px;color:#1A7A40;">
           📍 <strong>{auto_region}</strong>
         </div>
@@ -834,29 +903,40 @@ elif zip_clean and len(zip_clean) < 5:
     st.markdown("""
     <div style="background:#FFFBF0;border:1.5px solid #FFE9A0;
                 border-radius:10px;padding:8px 14px;
-                margin-top:-8px;font-size:13px;color:#B07D00;">
+                margin-top:-4px;font-size:13px;color:#B07D00;">
       Keep typing...
     </div>
     """, unsafe_allow_html=True)
 
-col3, col4 = st.columns(2)
-with col3:
-    quoted_quality = st.selectbox(
-        "Quality grade",
-        options=QUALITIES, index=1,
-    )
-with col4:
-    quoted_volume = st.number_input(
-        "Volume (tons) optional",
-        min_value=0, max_value=10000,
-        value=0, step=10,
-    )
+# SECTION E — Actual costs (optional)
+st.markdown(
+    '<div style="font-size:11px;font-weight:700;color:#8B7355;'
+    'text-transform:uppercase;letter-spacing:0.1em;margin:14px 0 8px;">'
+    'E · Actual costs (optional)</div>',
+    unsafe_allow_html=True,
+)
+colE1, colE2, colE3 = st.columns(3)
+with colE1:
+    actual_freight = float(st.number_input(
+        "Freight ($)", min_value=0.0, max_value=20000.0, value=0.0, step=50.0,
+        placeholder="e.g. 1900",
+        help="Enter your carrier's actual quote — more accurate than our estimate",
+    ))
+with colE2:
+    unloading = float(st.number_input(
+        "Unloading ($)", min_value=0.0, max_value=5000.0, value=0.0, step=10.0,
+        placeholder="e.g. 120",
+    ))
+with colE3:
+    other_fees = float(st.number_input(
+        "Other fees ($)", min_value=0.0, max_value=5000.0, value=0.0, step=10.0,
+        placeholder="tarps, surcharge",
+    ))
 
-col5, col6 = st.columns(2)
-with col5:
-    is_alfalfa_input = st.checkbox("🌿  Pure Alfalfa", value=True)
-with col6:
-    is_delivered_input = st.checkbox("🚛  Delivered price", value=True)
+# Compatibility shims for downstream code
+is_delivered_input = False
+quoted_volume      = volume_tons
+quoted_price       = fob_price_input if price_type == "FOB (at origin)" else delivered_price_input
 
 check = st.button("Check My Quote →", use_container_width=True)
 st.markdown('</div>', unsafe_allow_html=True)
@@ -1053,32 +1133,32 @@ if (check
     else:
         _freight_error = _dist_r.get("message", "Unknown error")
 
-# ── Delivered / FOB split comparison ──────────────────────
-_cutoff_13w  = df_prices["date"].max() - pd.Timedelta(weeks=13)
-_region_pool = df_prices[
-    (df_prices["state"]  == "California") &
-    (df_prices["region"] == quoted_region) &
-    (df_prices["date"]   >= _cutoff_13w)
-]
+# ── Cost computation ──────────────────────────────────────
+_freight_estimate_total = (
+    _freight_data["freight"]["total_freight"] if _freight_data else 0.0
+)
+freight_total   = actual_freight if actual_freight > 0 else _freight_estimate_total
+freight_per_ton = (freight_total / volume_tons) if volume_tons > 0 else 0.0
 
-def _best_slice(pool, is_del):
-    if "is_delivered" not in pool.columns:
-        return pd.DataFrame()
-    sub = pool[pool["is_delivered"] == is_del]
-    q   = filter_by_quality(sub, quoted_quality)
-    return q if len(q) >= MIN_RECORDS else sub
+if price_type == "FOB (at origin)":
+    fob_price = fob_price_input
+else:
+    fob_price = delivered_price_input - freight_per_ton
 
-_del_pool = _best_slice(_region_pool, 1)
-_fob_pool  = _best_slice(_region_pool, 0)
+quoted_price    = fob_price
+fob_equivalent  = fob_price
+total_other     = unloading + other_fees
+hay_cost        = fob_price * volume_tons
+total_cost      = hay_cost + freight_total + total_other
+landed_per_ton  = total_cost / volume_tons if volume_tons > 0 else 0.0
+landed_per_bale = (total_cost / bale_count) if bale_count > 0 else 0.0
+unloading_per_ton = unloading / volume_tons if volume_tons > 0 else 0.0
+other_per_ton     = other_fees / volume_tons if volume_tons > 0 else 0.0
+full_load_freight_per_ton = freight_total / 40.0 if freight_total > 0 else 0.0
 
-del_avg = del_lo = del_hi = None
-fob_avg = fob_lo = fob_hi = None
-if len(_del_pool) >= MIN_RECORDS:
-    del_avg, del_lo, del_hi, _ = calc_stats(_del_pool)
-    del_avg = round(del_avg, 1)
-if len(_fob_pool) >= MIN_RECORDS:
-    fob_avg, fob_lo, fob_hi, _ = calc_stats(_fob_pool)
-    fob_avg = round(fob_avg, 1)
+market_baseline = market_avg + full_load_freight_per_ton
+landed_diff     = landed_per_ton - market_baseline
+landed_diff_pct = (landed_diff / market_baseline * 100) if market_baseline else 0.0
 
 # ── Forecast ──────────────────────────────────────────────
 forecast_avg = market_avg
@@ -1130,26 +1210,16 @@ if model_pkg and quoted_region:
         pass
 
 # ── Verdict ───────────────────────────────────────────────
-# Primary diff drives title/colors — FOB when available, else delivered, else combined
-if freight_valid and fob_avg is not None:
-    _pdiff     = fob_equivalent - fob_avg
-    _pdiff_pct = _pdiff / fob_avg * 100
-elif freight_valid and del_avg is not None:
-    _pdiff     = quoted_price - del_avg
-    _pdiff_pct = _pdiff / del_avg * 100
-else:
-    _pdiff     = diff
-    _pdiff_pct = diff_pct
-
-if _pdiff_pct > 10:
+# Primary diff drives title/colors — landed cost vs market+full-load freight
+if landed_diff_pct > 10:
     title   = "Overpriced"
     action  = "Negotiate or Walk Away"
     bg      = "#FFF2F0"; border = "#FFD5CC"; color = "#C0392B"; pill_bg = "#C0392B"
-elif _pdiff_pct > 5:
+elif landed_diff_pct > 5:
     title   = "Slightly High"
     action  = "Try to Negotiate"
     bg      = "#FFFBF0"; border = "#FFE9A0"; color = "#B07D00"; pill_bg = "#C17F3E"
-elif _pdiff_pct >= -5:
+elif landed_diff_pct >= -5:
     title   = "Fair Price"
     action  = "Buy Now" if forecast_dir > 8 else "Good to Go"
     bg      = "#F0FAF4"; border = "#B8E6C8"; color = "#1A7A40"; pill_bg = "#1A7A40"
@@ -1158,60 +1228,40 @@ else:
     action  = "Buy Now"
     bg      = "#F0FAF4"; border = "#B8E6C8"; color = "#1A7A40"; pill_bg = "#1A7A40"
 
-# Body: dual comparison when freight is valid, single comparison otherwise
-if freight_valid and (del_avg is not None or fob_avg is not None):
-    _parts = []
-    if del_avg is not None:
-        _dd  = quoted_price - del_avg
-        _ddp = _dd / del_avg * 100
-        _ds  = "above" if _dd >= 0 else "below"
-        _parts.append(
-            f"<strong>Delivered comparison:</strong> ${quoted_price}/ton quoted vs "
-            f"${del_avg:.0f} delivered market avg → {abs(_ddp):.1f}% {_ds}"
-        )
-    if fob_avg is not None:
-        _fd  = fob_equivalent - fob_avg
-        _fdp = _fd / fob_avg * 100
-        _fs  = "above" if _fd >= 0 else "below"
-        _chk = "✅" if abs(_fdp) <= 5 else ("⚠️" if _fdp <= 10 else "❌")
-        _parts.append(
-            f"<strong>FOB equivalent (more accurate):</strong> ${fob_equivalent:.0f} FOB vs "
-            f"${fob_avg:.0f} FOB avg → {abs(_fdp):.1f}% {_fs} {_chk}"
-        )
-    if del_avg is not None and fob_avg is not None:
-        _spread = abs(del_avg - fob_avg)
-        _parts.append(
-            f"The ${_spread:.0f}/ton spread is within normal freight variation for this route"
-        )
-    body = "<br><br>".join(_parts)
-    freight_pct = freight_per_ton / quoted_price * 100
+_ls = "above" if landed_diff >= 0 else "below"
+body = (
+    f"Your landed cost of <strong>${landed_per_ton:.2f}/ton</strong> is "
+    f"<strong>${abs(landed_diff):.2f} ({abs(landed_diff_pct):.1f}%) {_ls}</strong> "
+    f"the market estimate of <strong>${market_baseline:.2f}/ton</strong> "
+    f"(regional FOB ${market_avg:.0f} + full-load freight ${full_load_freight_per_ton:.2f})."
+)
+
+freight_ctx = ""
+if freight_total > 0 and quoted_price > 0:
+    _fp_pct = freight_per_ton / quoted_price * 100
     freight_ctx = (
-        f"<br><br>🚛 Freight accounts for <strong>${freight_per_ton:.2f}/ton "
-        f"({freight_pct:.0f}%)</strong> of your total quote"
-    ) if is_delivered_input else ""
-    no_freight_disclaimer = ""
-else:
-    _ds = "above" if diff >= 0 else "below"
-    body = (
-        f"You were quoted <strong>${quoted_price}/ton</strong> — "
-        f"<strong>${abs(diff):.0f} ({abs(diff_pct):.1f}%) {_ds}</strong> "
-        f"the {data_label} average of <strong>${market_avg:.0f}/ton</strong> ({time_label})."
-    )
-    freight_ctx = ""
-    no_freight_disclaimer = (
-        '<br><br><span style="color:#B07D00;">⚠️ Add origin zip for '
-        'freight-adjusted comparison</span>'
-        if not origin_zip_clean else ""
+        f"<br><br>🚛 Freight (${freight_per_ton:.2f}/ton) is "
+        f"<strong>{_fp_pct:.0f}%</strong> of your FOB price."
     )
 
+no_freight_disclaimer = (
+    '<br><br><span style="color:#B07D00;">⚠️ Add origin zip for '
+    'freight-adjusted comparison</span>'
+    if not origin_zip_clean else ""
+)
+
 vol_note = ""
-if quoted_volume > 0:
-    _voverpay = (quoted_price - market_avg) * quoted_volume
-    if abs(_voverpay) > 50:
+if volume_tons > 0 and abs(landed_diff) * volume_tons > 50:
+    _vsavings = -landed_diff * volume_tons
+    if _vsavings > 0:
         vol_note = (
-            f"<br><br>At {quoted_volume} tons, you'd <strong>overpay ${_voverpay:,.0f}</strong> vs market."
-            if _voverpay > 0
-            else f"<br><br>At {quoted_volume} tons, you'd <strong>save ${abs(_voverpay):,.0f}</strong> vs market."
+            f"<br><br>At {volume_tons:.2f} tons you save "
+            f"<strong>${_vsavings:,.0f}</strong> vs market."
+        )
+    else:
+        vol_note = (
+            f"<br><br>At {volume_tons:.2f} tons you overpay "
+            f"<strong>${abs(_vsavings):,.0f}</strong> vs market."
         )
 
 seasonal_html = (
@@ -1255,6 +1305,129 @@ st.markdown(f"""
 <div class="forecast-note"
      style="background:{fc_bg};border:1.5px solid {fc_border};color:{fc_color};">
   {fc_text}
+</div>
+""", unsafe_allow_html=True)
+
+# ── Cost breakdown card ───────────────────────────────────
+_volume_label = (
+    f"{volume_tons:.2f} tons ({bale_count} bales)"
+    if bale_count > 0 else f"{volume_tons:.2f} tons"
+)
+_freight_line = (
+    f'<div style="display:flex;justify-content:space-between;font-size:14px;'
+    f'margin-bottom:4px;"><span>Freight:</span>'
+    f'<span><strong>${freight_total:,.2f}</strong> '
+    f'<span style="color:#8B7355;font-size:12px;">(${freight_per_ton:.2f}/ton)</span>'
+    f'</span></div>'
+) if freight_total > 0 else ""
+
+_unloading_line = (
+    f'<div style="display:flex;justify-content:space-between;font-size:14px;'
+    f'margin-bottom:4px;"><span>Unloading:</span>'
+    f'<span><strong>${unloading:,.2f}</strong> '
+    f'<span style="color:#8B7355;font-size:12px;">(${unloading_per_ton:.2f}/ton)</span>'
+    f'</span></div>'
+) if unloading > 0 else ""
+
+_other_line = (
+    f'<div style="display:flex;justify-content:space-between;font-size:14px;'
+    f'margin-bottom:4px;"><span>Other fees:</span>'
+    f'<span><strong>${other_fees:,.2f}</strong> '
+    f'<span style="color:#8B7355;font-size:12px;">(${other_per_ton:.2f}/ton)</span>'
+    f'</span></div>'
+) if other_fees > 0 else ""
+
+_per_bale_line = (
+    f'<div style="font-size:14px;color:#8B7355;margin-top:2px;">'
+    f'${landed_per_bale:.2f}/bale</div>'
+) if bale_count > 0 else ""
+
+st.markdown(f"""
+<div style="background:#FFFFFF;border-radius:20px;padding:24px 28px;
+            box-shadow:0 2px 20px rgba(0,0,0,0.06);margin-top:12px;">
+  <div style="font-size:11px;font-weight:700;color:#8B7355;
+              text-transform:uppercase;letter-spacing:0.1em;margin-bottom:14px;">
+    📦 Your Landed Cost Breakdown
+  </div>
+  <div style="display:flex;justify-content:space-between;font-size:13px;
+              color:#8B7355;margin-bottom:12px;">
+    <span>Volume:</span><span><strong style="color:#1C1C1E;">{_volume_label}</strong></span>
+  </div>
+  <div style="display:flex;justify-content:space-between;font-size:13px;
+              color:#8B7355;margin-bottom:14px;">
+    <span>FOB price:</span><span><strong style="color:#1C1C1E;">${fob_price:.2f}/ton</strong></span>
+  </div>
+  <div style="display:flex;justify-content:space-between;font-size:14px;margin-bottom:4px;">
+    <span>Hay cost:</span><span><strong>${hay_cost:,.2f}</strong></span>
+  </div>
+  {_freight_line}
+  {_unloading_line}
+  {_other_line}
+  <div style="border-top:1px solid #E5DDD0;margin:10px 0;"></div>
+  <div style="display:flex;justify-content:space-between;font-size:15px;font-weight:700;">
+    <span>TOTAL:</span><span>${total_cost:,.2f}</span>
+  </div>
+  <div style="display:flex;justify-content:space-between;font-size:18px;font-weight:800;
+              color:#C17F3E;margin-top:6px;">
+    <span>LANDED:</span><span>${landed_per_ton:.2f}/ton</span>
+  </div>
+  {_per_bale_line}
+</div>
+""", unsafe_allow_html=True)
+
+# ── Partial load alert ────────────────────────────────────
+if volume_tons < 35 and freight_total > 0:
+    _premium_per_ton = freight_per_ton - full_load_freight_per_ton
+    _premium_total   = _premium_per_ton * volume_tons
+    st.markdown(f"""
+<div style="background:#FFFBF0;border:1.5px solid #FFE9A0;
+            border-radius:16px;padding:18px 22px;margin-top:10px;color:#B07D00;">
+  <div style="font-weight:800;font-size:15px;margin-bottom:8px;">
+    ⚠️ Partial Load Premium
+  </div>
+  <div style="font-size:14px;line-height:1.7;">
+    Your freight: <strong>${freight_per_ton:.2f}/ton</strong><br>
+    Full load:    <strong>${full_load_freight_per_ton:.2f}/ton</strong> (at 40 tons)<br>
+    Premium:      <strong>${_premium_per_ton:.2f}/ton extra</strong>
+  </div>
+  <div style="font-size:13px;margin-top:10px;color:#A06010;">
+    Filling the truck saves ${_premium_per_ton:.2f}/ton →
+    <strong>${_premium_total:,.0f}</strong> on {volume_tons:.2f} tons.
+  </div>
+</div>
+""", unsafe_allow_html=True)
+
+# ── Market comparison detail ──────────────────────────────
+_mc_color = "#1A7A40" if landed_diff <= 0 else ("#B07D00" if landed_diff_pct <= 10 else "#C0392B")
+_mc_arrow = "✅ BELOW MARKET" if landed_diff <= 0 else (
+    "⚠️ ABOVE MARKET" if landed_diff_pct <= 10 else "❌ OVERPRICED"
+)
+_mc_total = landed_diff * volume_tons
+_mc_total_label = (
+    f"Total {'overpay' if _mc_total > 0 else 'savings'}: "
+    f"<strong>${abs(_mc_total):,.2f}</strong>"
+) if abs(_mc_total) > 1 else ""
+
+st.markdown(f"""
+<div style="background:#FFFFFF;border-radius:16px;padding:18px 22px;
+            box-shadow:0 2px 12px rgba(0,0,0,0.05);margin-top:10px;
+            border-left:4px solid {_mc_color};">
+  <div style="font-size:11px;font-weight:700;color:#8B7355;
+              text-transform:uppercase;letter-spacing:0.1em;margin-bottom:10px;">
+    Landed cost vs market
+  </div>
+  <div style="display:flex;justify-content:space-between;font-size:14px;margin-bottom:4px;">
+    <span>Your landed cost:</span><span><strong>${landed_per_ton:.2f}/ton</strong></span>
+  </div>
+  <div style="display:flex;justify-content:space-between;font-size:14px;margin-bottom:4px;">
+    <span>Market estimate:</span><span><strong>${market_baseline:.2f}/ton</strong></span>
+  </div>
+  <div style="display:flex;justify-content:space-between;font-size:14px;
+              color:{_mc_color};font-weight:700;margin-top:6px;">
+    <span>Difference:</span>
+    <span>${landed_diff:+.2f}/ton  {_mc_arrow}</span>
+  </div>
+  <div style="font-size:12px;color:#8B7355;margin-top:6px;">{_mc_total_label}</div>
 </div>
 """, unsafe_allow_html=True)
 
