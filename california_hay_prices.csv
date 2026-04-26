@@ -2562,7 +2562,6 @@ date,region,commodity,quality,price_avg,price_min,price_max,quantity,crop_age,ha
 2026-01-12,Central San Joaquin Valley,Straw,,65.0,65.0,65.0,1500.0,,Bermuda,Dairy,Large Square,F.O.B.,,,,,,0,0,0,0,1,1,0,,,California
 2026-01-12,North Inter-Mountains,Hay,Supreme,260.0,260.0,260.0,50.0,,Alfalfa,Dairy,Large Square 3x4,F.O.B.,,,,,,0,0,1,0,1,1,0,,,California
 2026-01-12,North Inter-Mountains,Hay,Premium,245.0,240.0,250.0,250.0,,Alfalfa,Dairy,Large Square 3x4,F.O.B.,,,,,,0,0,1,0,1,1,0,,,California
-2026-01-12,Sacramento Valley,Hay,Good,80.0,80.0,80.0,25.0,,Alfalfa/Wheat Mix,,Large Square 3x4,F.O.B.,,,,,,0,0,1,0,0,1,0,,,California
 2026-01-12,North San Joaquin Valley,Hay,Premium,200.0,200.0,200.0,800.0,,Alfalfa,,Large Square 3x4,F.O.B.,,,,,,0,0,1,0,0,1,0,,,California
 2026-01-12,Central San Joaquin Valley,Hay,Supreme,260.0,260.0,260.0,500.0,Old Crop,Alfalfa,Dairy,Large Square 3x4,Delivered,,,,,0.0,0,1,1,1,1,1,0,,,California
 2026-01-12,South,Hay,Premium,185.0,185.0,185.0,350.0,,Alfalfa,Dairy,Large Square 3x4,F.O.B.,,,,,,0,0,1,0,1,1,0,,,Oregon
