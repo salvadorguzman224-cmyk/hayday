@@ -1,17 +1,14 @@
-"""
-ingest_hoyt.py — Hoyt Report PDF → california_hay_prices.csv
-
-Run in Google Colab:
-  !pip install pdfplumber requests pandas
-  from google.colab import drive
-  drive.mount('/content/drive')
-  !git clone https://github.com/salvadorguzman224-cmyk/hayday.git /content/hayday
-  !python /content/hayday/ingest_hoyt.py
-
-Standalone monthly ETL — not imported by app.py. Downloads the weekly
-Hoyt Report PDFs, parses CA price tables, merges into the main dataset,
-and validates the result.
-"""
+# Run in Google Colab:
+# !pip install pdfplumber requests pandas
+# from google.colab import drive
+# drive.mount('/content/drive')
+# !git clone https://github.com/salvadorguzman224-cmyk/hayday.git /content/hayday
+# !python /content/hayday/ingest_hoyt.py
+#
+# ingest_hoyt.py — Hoyt Report PDF → california_hay_prices.csv
+# Standalone monthly ETL (not imported by app.py). Downloads the weekly
+# Hoyt Report PDFs, parses CA price tables, merges into the main dataset,
+# and validates the result.
 
 from __future__ import annotations
 
