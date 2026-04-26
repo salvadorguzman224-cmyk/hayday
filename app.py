@@ -511,8 +511,8 @@ QUALITY_MATCH = {
     "Supreme":  ["Supreme", "Premium/Supreme"],
     "Premium":  ["Premium", "Good/Premium", "Premium/Supreme"],
     "Good":     ["Good", "Fair/Good", "Good/Premium"],
-    "Fair":     ["Fair", "Fair/Good"],
-    "Utility":  ["Utility"],
+    "Fair":     ["Fair", "Fair/Good", "Utility/Fair"],
+    "Utility":  ["Utility", "Utility/Fair"],
 }
 
 def filter_by_quality(df, quality):
@@ -792,7 +792,12 @@ def calc_stats(data):
 
 def get_market_comparison(df, quoted_region, quoted_quality,
                           is_alfalfa, is_delivered):
-    ca_data = df[df["state"] == "California"].copy()
+    # Hay commodity only · valid CA regions only
+    ca = df[
+        (df["state"]     == "California") &
+        (df["commodity"] == "Hay") &
+        (df["region"].isin(CA_VALID_REGIONS))
+    ].copy()
 
     def apply_filters(data, weeks):
         cutoff = data["date"].max() - pd.Timedelta(weeks=weeks)
@@ -805,50 +810,49 @@ def get_market_comparison(df, quoted_region, quoted_quality,
             if len(sub) >= MIN_RECORDS: result = sub
         return result
 
-    def stats_dict(data, label, time_label):
+    def calc(data, label, time_label):
         return {
             "market_avg":  round(data["price_avg"].mean(), 1),
-            "market_lo":   round(data["price_avg"].min(),  1),
-            "market_hi":   round(data["price_avg"].max(),  1),
+            "market_lo":   round(data["price_avg"].quantile(0.10), 1),
+            "market_hi":   round(data["price_avg"].quantile(0.90), 1),
             "n_trades":    len(data),
             "data_label":  label,
             "time_label":  time_label,
+            "limited":     False,
         }
 
+    # Steps 1-4: same quality + same region, expanding time window
     for weeks in [4, 8, 13, 26]:
-        base  = apply_filters(ca_data[ca_data["region"] == quoted_region], weeks)
+        base  = apply_filters(ca[ca["region"] == quoted_region], weeks)
         qdata = filter_by_quality(base, quoted_quality)
         if len(qdata) >= MIN_RECORDS:
-            return stats_dict(
+            return calc(
                 qdata,
                 f"{quoted_quality} · {quoted_region}",
                 f"last {weeks} weeks",
             )
 
-    base = apply_filters(ca_data[ca_data["region"] == quoted_region], 13)
+    # Step 5: all grades + same region + 13 weeks
+    base = apply_filters(ca[ca["region"] == quoted_region], 13)
     if len(base) >= MIN_RECORDS:
-        return stats_dict(
-            base,
-            f"{quoted_region} · all grades",
-            "last 13 weeks — grade data limited",
-        )
+        result = calc(base, f"{quoted_region} · all grades", "last 13 weeks")
+        result["limited"] = True
+        return result
 
-    base  = apply_filters(ca_data[ca_data["region"].isin(CA_VALID_REGIONS)], 13)
+    # Step 6: same quality + all valid CA regions + 13 weeks
+    base  = apply_filters(ca, 13)
     qdata = filter_by_quality(base, quoted_quality)
     if len(qdata) >= MIN_RECORDS:
-        return stats_dict(
-            qdata,
-            f"{quoted_quality} · CA regional avg",
-            "last 13 weeks — limited local data",
-        )
+        result = calc(qdata, f"{quoted_quality} · CA regional avg", "last 13 weeks")
+        result["limited"] = True
+        return result
 
-    base = apply_filters(ca_data[ca_data["region"].isin(CA_VALID_REGIONS)], 13)
+    # Step 7: all grades + all valid CA regions + 13 weeks
+    base = apply_filters(ca, 13)
     if len(base) >= MIN_RECORDS:
-        return stats_dict(
-            base,
-            "CA regional avg · all grades",
-            "last 13 weeks — limited local data",
-        )
+        result = calc(base, "CA regional avg · all grades", "last 13 weeks")
+        result["limited"] = True
+        return result
 
     return None
 
@@ -1099,6 +1103,7 @@ elif st.session_state.qc_step == 4:
     n_trades   = _mc["n_trades"]
     data_label = _mc["data_label"]
     time_label = _mc["time_label"]
+    is_limited = _mc.get("limited", False)
 
     # Cost computation
     freight_per_ton           = freight_total / volume_tons if volume_tons > 0 else 0.0
@@ -1186,6 +1191,16 @@ elif st.session_state.qc_step == 4:
   <div style="font-size:11px;color:#8B7355;margin-top:10px;">
     {data_label} · {time_label} · {n_trades} trades
   </div>
+</div>
+""", unsafe_allow_html=True)
+
+    if is_limited:
+        st.markdown("""
+<div style="background:#F5F0E8;border-radius:8px;padding:10px 14px;
+            font-size:12px;color:#8B7355;margin-bottom:14px;">
+  ⚠️ Limited recent data for this specific region and grade.
+  Comparison based on a wider dataset.
+  Check back weekly as new USDA data is added.
 </div>
 """, unsafe_allow_html=True)
 
