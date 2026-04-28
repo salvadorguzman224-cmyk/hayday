@@ -9,7 +9,9 @@ def _gdrive_download(file_id, dest_path):
     """Download a file from Google Drive by file ID."""
     if os.path.exists(dest_path):
         return  # already downloaded this session
-    os.makedirs(os.path.dirname(dest_path), exist_ok=True)
+    parent = os.path.dirname(dest_path)
+if parent:
+    os.makedirs(parent, exist_ok=True)
     url = f"https://drive.google.com/uc?export=download&id={file_id}"
     session = requests.Session()
     response = session.get(url, stream=True)
