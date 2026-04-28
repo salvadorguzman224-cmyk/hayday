@@ -6,16 +6,15 @@ import os
 import requests
 
 def _gdrive_download(file_id, dest_path):
-    """Download a file from Google Drive by file ID."""
+    import os, requests
     if os.path.exists(dest_path):
-        return  # already downloaded this session
+        return
     parent = os.path.dirname(dest_path)
-if parent:
-    os.makedirs(parent, exist_ok=True)
+    if parent:
+        os.makedirs(parent, exist_ok=True)
     url = f"https://drive.google.com/uc?export=download&id={file_id}"
     session = requests.Session()
     response = session.get(url, stream=True)
-    # Handle large file confirmation page
     for key, value in response.cookies.items():
         if key.startswith("download_warning"):
             url = f"https://drive.google.com/uc?export=download&id={file_id}&confirm={value}"
