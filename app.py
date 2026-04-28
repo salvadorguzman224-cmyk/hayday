@@ -1,3 +1,46 @@
+# ============================================================
+# HayDay.ai — Drive file loader
+# Downloads all required files from Google Drive on first boot
+# ============================================================
+import os
+import requests
+
+def _gdrive_download(file_id, dest_path):
+    """Download a file from Google Drive by file ID."""
+    if os.path.exists(dest_path):
+        return  # already downloaded this session
+    os.makedirs(os.path.dirname(dest_path), exist_ok=True)
+    url = f"https://drive.google.com/uc?export=download&id={file_id}"
+    session = requests.Session()
+    response = session.get(url, stream=True)
+    # Handle large file confirmation page
+    for key, value in response.cookies.items():
+        if key.startswith("download_warning"):
+            url = f"https://drive.google.com/uc?export=download&id={file_id}&confirm={value}"
+            response = session.get(url, stream=True)
+            break
+    with open(dest_path, "wb") as f:
+        for chunk in response.iter_content(32768):
+            if chunk:
+                f.write(chunk)
+
+# File IDs from Google Drive (all set to "Anyone with link")
+DRIVE_FILES = {
+    "models/xgboost_v12f_20260427_235122.pkl": "1C0F0DMaGqJcghOfSpsOZQiOjsMUExmOO",
+    "model_registry.csv":                       "19udmUo0SUKMN1Pr2kn0JUDReK-5HgEeG",
+    "ca_hay_prices_v2_clean.csv":               "1kpOqZAEDn_Ha_xKkePdwlhuuqyVUfH23",
+    "weather_weekly.csv":                       "1l8w3ZOjPcV8LkZd2rhraNcHVBK0TX0uv",
+    "diesel_prices.csv":                        "1w5KT_ztHZg8V8TzUP3T9q8HmfKHGAO8D",
+    "cattle_monthly_cap.csv":                   "189jbu4pVGqrPNokGgBJO55as_3sHrxXm",
+    "milk_price_ca_clean.csv":                  "1GtzUt5_O4XUuYMlVt2_-xIYKiuKqJgmq",
+    "water_allocation.csv":                     "1-CivDzDJ3dlFeKDa5zu5JxuoA2N77WmH",
+    "hay_stocks_features.csv":                  "1aiVJpM1xYVmqTURCipoFUFcrw76Ae42d",
+    "nass_supply_data.csv":                     "1MW6FqQcSPkaUEnQ61NFj9s8aVDjYdZ_L",
+}
+
+# Download all files on startup
+for local_path, file_id in DRIVE_FILES.items():
+    _gdrive_download(file_id, local_path)
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -416,18 +459,21 @@ def load_data():
 @st.cache_resource
 def load_model():
     try:
-        # Load whichever model is marked is_production=True in the registry
         import pandas as _pd
-        _reg_path = os.path.join(os.path.dirname(__file__), "model_registry.csv") \
-            if "__file__" in dir() else "model_registry.csv"
-        if not os.path.exists(_reg_path):
-            _reg_path = "/content/drive/MyDrive/hay_market_data/model_registry.csv"
-        _reg = _pd.read_csv(_reg_path)
-        _prod = _reg[_reg["is_production"] == True]
-        if len(_prod) != 1:
-            raise RuntimeError(f"Expected exactly 1 production model, found {len(_prod)}")
-        return joblib.load(_prod.iloc[0]["file_path"])
-    except:
+        # First try registry
+        if os.path.exists("model_registry.csv"):
+            _reg = _pd.read_csv("model_registry.csv")
+            _prod = _reg[_reg["is_production"] == True]
+            if len(_prod) == 1:
+                # Use just the filename, not the full Drive path
+                model_file = os.path.basename(_prod.iloc[0]["file_path"])
+                model_path = os.path.join("models", model_file)
+                if os.path.exists(model_path):
+                    return joblib.load(model_path)
+        # Fallback: load v12f directly
+        return joblib.load("models/xgboost_v12f_20260427_235122.pkl")
+    except Exception as e:
+        st.error(f"Model load failed: {e}")
         return None
 
 df_prices = load_data()
