@@ -37,6 +37,7 @@ DRIVE_FILES = {
     "water_allocation.csv":                     "1-CivDzDJ3dlFeKDa5zu5JxuoA2N77WmH",
     "hay_stocks_features.csv":                  "1aiVJpM1xYVmqTURCipoFUFcrw76Ae42d",
     "nass_supply_data.csv":                     "1MW6FqQcSPkaUEnQ61NFj9s8aVDjYdZ_L",
+    "zip_to_region.json":                       "1LAVGV7KoDrJXgv9WkJoxSqT4ThKopGuU",
 }
 
 # Download all files on startup
@@ -630,7 +631,7 @@ if os.path.exists("zip_to_region.json"):
         _zip_map = _json.load(_zf)
 
 zip_clean          = zip_input.strip() if zip_input else ""
-auto_region        = __zip_map.get(zip_clean, None)
+auto_region        = _zip_map.get(zip_clean, None)
 quoted_region      = None
 zip_not_in_service = False
 
